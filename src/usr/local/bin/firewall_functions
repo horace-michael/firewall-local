@@ -1,0 +1,31 @@
+#!/bin/bash
+# Description: Core library using standard H&M DEBUG logic
+# Version 3.0.0 2026-03-05
+# AUTHOR="H&M"
+
+# 1. Initialize variables 
+DEBUG="${DEBUG:-false}"
+LOG_TAG="FIREWALL_LOCAL"
+
+# 2. Define functions
+log_event() {
+    # Pseudocode: Dual logging to syslog and STDOUT if DEBUG is active
+    local level="${1}"
+    local message="${2}"
+    
+    # Machine Log (Always active for audit) [cite: 2026-01-30]
+    logger -t "${LOG_TAG}" "[${level}] ${message}"
+    
+    # Dev Style Output (Active only if DEBUG=true)
+    [ "${DEBUG}" = true ] && printf "[DEBUG] [%s] %s\n" "${level}" "${message}"
+}
+
+validate_env() {
+    # Pseudocode: Check for critical IPFire paths [cite: 2026-01-29]
+    [ "${DEBUG}" = true ] && log_event "DEBUG" "Verifying environment integrity..."
+    
+    if [ ! -d "/var/ipfire" ]; then
+        log_event "ERROR" "IPFire environment not detected!"
+        return 1
+    fi
+}
