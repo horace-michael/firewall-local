@@ -1,0 +1,61 @@
+#!/bin/bash
+###############################################################################
+# firewall.local – modular firewall loader (verbose)
+# Version: 2.5.2 2026-02-09
+# Description:
+#   Loads all firewall modules from a base directory.
+#   *_start.sh -> starts module
+#   *_stop.sh  -> stop module 
+#   Logs every discovered and executed script with timestamp to /var/log/firewall.local.log.
+#   No iptables retry
+#   Ignores unknown actions and logs that call
+#   Cleaning CUSTOM* chains is now done by CUSTOM_chains_stop.sh
+#   CONFIG_DIR="/etc/sysconfig/fw.local/"
+#   No more dependencies on runlevel
+###############################################################################
+
+CONFIG_DIR="/etc/sysconfig/fw.local/"
+START_SUFFIX="_start.sh"
+STOP_SUFFIX="_stop.sh"
+LOGFILE="/var/log/firewall.local.log"
+
+boot_mesg() {
+    local MSG="$1"
+    echo "$(date '+%Y-%m-%d %H:%M:%S') FWLOCAL: $MSG" | tee -a "$LOGFILE"
+}
+
+run_scripts() {
+    local SUFFIX="$1"
+    for script in "$CONFIG_DIR"/*"$SUFFIX"; do
+        [ -x "$script" ] || continue
+        boot_mesg "firewall.local: executing $script"
+        bash -c ". '$script'"
+        if [ $? -ne 0 ]; then
+            boot_mesg "firewall.local: ERROR executing $script"
+        fi
+    done
+}
+
+case "$1" in
+    start)
+        boot_mesg "firewall.local: starting module load"
+        run_scripts "$START_SUFFIX"
+        ;;
+
+    stop)
+        boot_mesg "firewall.local: stopping modules - unloading"
+        run_scripts "$STOP_SUFFIX"
+	# v2.5.1 - CUSTOM_chains_stop.sh
+        ;;
+
+    reload)
+        boot_mesg "firewall.local reload"
+        $0 stop
+        $0 start
+        ;;
+
+    *)
+        boot_mesg "firewall.local: unknown action $1, ignoring"
+        exit 0
+        ;;
+esac

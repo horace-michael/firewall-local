@@ -1,0 +1,5 @@
+# SMB targets (File servers, laptop with CDROM, etc)
+#FileFire Samba Server
+192.168.10.2
+#AcerTM4720 - CD-ROM usnit is there
+192.168.10.47
