@@ -1,6 +1,22 @@
+<<<<<<< HEAD
 .vscode/
 .history/
 *.log
 *.bak
 *.tmp
 *~
+=======
+# IPFire build artifacts
+*.ipfire
+*.tar.xz
+build/
+*.bak.*
+
+# Logs and temp files
+var/log/*.log
+*.tmp
+.DS_Store
+
+# Git flow
+.vscode/
+>>>>>>> 3106ba0 (Initial commit: H&M IPFire Firewall-Local structure)
