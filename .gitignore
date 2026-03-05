@@ -1,0 +1,6 @@
+.vscode/
+.history/
+*.log
+*.bak
+*.tmp
+*~
