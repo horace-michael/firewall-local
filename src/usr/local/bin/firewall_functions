@@ -13,7 +13,7 @@ log_event() {
     local level="${1}"
     local message="${2}"
     
-    # Machine Log (Always active for audit) [cite: 2026-01-30]
+    # Machine Log (Always active for audit)
     logger -t "${LOG_TAG}" "[${level}] ${message}"
     
     # Dev Style Output (Active only if DEBUG=true)
@@ -21,10 +21,14 @@ log_event() {
 }
 
 validate_env() {
-    # Pseudocode: Check for critical IPFire paths [cite: 2026-01-29]
+    # Pseudocode: Confirm IPFire identity and directory structure [cite: 2026-01-29]
     [ "${DEBUG}" = true ] && log_event "DEBUG" "Verifying environment integrity..."
     
-    if [ ! -d "/var/ipfire" ]; then
+    # Check both conditions directly to avoid SC2181 [cite: 2026-03-05]
+    if [ -d "/var/ipfire" ] && grep -q "ipfire" /etc/os-release 2>/dev/null; then
+        log_event "INFO" "IPFire environment detected successfully."
+        return 0
+    else
         log_event "ERROR" "IPFire environment not detected!"
         return 1
     fi
