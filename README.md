@@ -12,7 +12,7 @@ Custom firewall management system for IPFire, structured for modularity and scal
 ## 🚀 Deployment
 Scripts are designed to be symlinked or copied to the root filesystem on an IPFire installation.
 
-
+```text
 firewall-local/ (master)
 ├── .gitignore
 ├── scripts/
@@ -33,3 +33,4 @@ firewall-local/ (master)
                 ├── SCRIPT_2_start.sh
                 ├── ... (26 modules total) ...
                 └── SCRIPT_N_stop.sh
+```
