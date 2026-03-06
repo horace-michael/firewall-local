@@ -1,0 +1,14 @@
+# ASN       TABLE   ACTION   DIR   LOG     CHAINS
+# -----------------------------------------------------------------------
+# ASN2Block Module
+212238      filter  DROP     src   true    INPUTFW
+212238      filter  REJECT   dst   true    FORWARDFW
+51852       filter  DROP     src   true    INPUTFW
+51852       filter  REJECT   dst   true    FORWARDFW
+
+# Applied Privacy DNS Module
+208323      filter  RETURN   dst   false   FORWARDFW CUSTOMFORWARD
+
+# Alibaba CN Exceptions
+# Nota: Necesită set IPset numit AS_ALIBABA_CN
+ALIBABA_CN  filter  RETURN   dst   false   CUSTOMFORWARD CUSTOMOUTPUT

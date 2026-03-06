@@ -7,6 +7,6 @@
 
 
 # Name:	compex.com.sg - Compex WLE600VX drivers
-# Wddress: 23.106.127.130
+# Address: 23.106.127.130
 iptables --wait -t filter -I FORWARDFW -p tcp --dport 443 -d 23.106.127.130/32 -j RETURN
 

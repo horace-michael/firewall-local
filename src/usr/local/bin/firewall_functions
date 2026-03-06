@@ -1,6 +1,7 @@
 #!/bin/bash
 # Description: Core library using standard H&M DEBUG logic
-# Version 3.0.0 2026-03-05
+# Version 3.1.0 2026-03-06
+# Check CHANGELOG.md for details
 # AUTHOR="H&M"
 
 # 1. Initialize variables 
@@ -32,4 +33,157 @@ validate_env() {
         log_event "ERROR" "IPFire environment not detected!"
         return 1
     fi
+}
+
+generate_ipset_from_asn_list() {
+    # Function: generate_ipset_from_asn_list
+    # Pseudocode:
+    # 1. Fetch ASN data into a temporary generic set name.
+    # 2. Rename the set atomically to the Final Action Name.
+    # 3. Example: AS51852_DROP or AS51852_BYP.
+
+    local asn="${1}"
+    local action="${2:-DROP}" # Options: DROP, BYP
+    local target_name="AS${asn}_${action}"
+
+    # Fetch to default location format
+    location list-networks-by-as --format=ipset --family=ipv4 "${asn}" > "/tmp/as.ipset"
+    
+    # Atomic transition: Restore then Rename
+    ipset restore < "/tmp/as.ipset"
+    ipset rename "AS${asn}v4" "${target_name}"
+    
+    log_event "INFO" "Set ${target_name} is now active in kernel."
+}
+
+apply_ipset_in_table_chain_action_src_or_dst() {
+    # Function: apply_ipset_in_table_chain_action_src_or_dst
+    # Pseudocode:
+    # 1. Initialize local variables for IPset Name, Chain, and Action.
+    # 2. Validate that the IPset exists in kernel memory.
+    # 3. Check if the specified Chain exists in the filter/nat table.
+    # 4. If logging is enabled, insert a LOG rule before the action rule.
+    # 5. Insert rule in table - chain using the defined Action (-j DROP, -j RETURN, etc) and desired direction (src or dst).
+    
+    local set_name="${1}"
+    local table="${2:-filter}"
+    local chain="${3:-FORWARDFW}"
+    local action="${4:-RETURN}"
+    local src_dst="${5:-dst}"
+    local log_enabled="${6:-false}"
+    
+    # Verify IPset exists before applying
+    if ! ipset list "${set_name}" >/dev/null 2>&1; then
+        log_event "ERROR" "IPset ${set_name} not found in kernel. Skipping."
+        return 1
+    fi
+
+    # Check chain existence to avoid iptables errors
+    if ! iptables -t "${table}" -L "${chain}" >/dev/null 2>&1; then
+        log_event "WARNING" "Chain ${chain} in table ${table} not found."
+        return 1
+    fi
+
+    log_event "INFO" "Applying ${action} for ${set_name} in ${table}:${chain}"
+    
+    # Logic: Insert at top to ensure bypass/drop occurs before general rules
+    iptables --wait -t "${table}" -I "${chain}" -m set --match-set "${set_name}" "${src_dst}" -j "${action}"
+
+    # Inject LOG rule if requested
+    if [ "${log_enabled}" = "true" ]; then
+        log_event "DEBUG" "Adding LOG rule for ${set_name} in ${chain}"
+        iptables --wait -t "${table}" -I "${chain}" -m set --match-set "${set_name}" "${src_dst}" \
+            -j LOG --log-prefix "IPSET:${set_name} " --log-level 4
+    fi
+}
+
+remove_ipset_from_table_chain_action_src_or_dst() {
+    # Function: remove_ipset_from_table_chain_action_src_or_dst
+    # Pseudocode:
+    # 1. Initialize local variables for IPset Name, Table, Chain, Action, Direction, and Log status.
+    # 2. Check if the IPset exists in kernel memory to validate context.
+    # 3. If logging was enabled, verify rule existence before removal.
+    # 4. Remove the action rule (DROP, RETURN, etc) only if 'iptables -C' confirms it exists.
+    # 5. Use 2>/dev/null || true for maximum reliability during shutdown/restart.
+
+    local set_name="${1}"
+    local table="${2:-filter}"
+    local chain="${3:-FORWARDFW}"
+    local action="${4:-RETURN}"
+    local src_dst="${5:-dst}"
+    local log_enabled="${6:-false}"
+
+    # Verify IPset exists before attempting removal
+    if ! ipset list "${set_name}" >/dev/null 2>&1; then
+        log_event "DEBUG" "IPset ${set_name} not found. Skipping rule cleanup."
+        return 0
+    fi
+
+    # Remove LOG rule if it was requested during start
+    if [ "${log_enabled}" = "true" ]; then
+        log_event "DEBUG" "Removing LOG rule for ${set_name} in ${chain}"
+        # Bullet-proof check: verify before delete
+        iptables -t "${table}" -C "${chain}" -m set --match-set "${set_name}" "${src_dst}" \
+            -j LOG --log-prefix "IPSET:${set_name} " --log-level 4 2>/dev/null && \
+        iptables --wait -t "${table}" -D "${chain}" -m set --match-set "${set_name}" "${src_dst}" \
+            -j LOG --log-prefix "IPSET:${set_name} " --log-level 4 2>/dev/null
+    fi
+
+    log_event "INFO" "Removing ${action} rule for ${set_name} from ${table}:${chain}"
+    
+    # Remove final action rule only if it exists
+    iptables -t "${table}" -C "${chain}" -m set --match-set "${set_name}" "${src_dst}" -j "${action}" 2>/dev/null && \
+    iptables --wait -t "${table}" -D "${chain}" -m set --match-set "${set_name}" "${src_dst}" -j "${action}" 2>/dev/null
+}
+
+process_firewall_master_list() {
+    # Function: process_firewall_master_list
+    # Pseudocode:
+    # 1. Validate IPFire environment integrity.
+    # 2. Check for the existence of the master list file.
+    # 3. Read the config line-by-line; ignore comments/empty lines.
+    # 4. For each entry, verify the IPset is present in kernel memory.
+    # 5. Iterate through the chains list and trigger the apply/remove function.
+    
+    local mode="${1:-apply}"
+    local list_path="${2:-/etc/sysconfig/fw.local/hosts/asn_master.list}"
+    local asn table action dir log_en chains c
+    local set_name
+
+    # 1. Environment Validation
+    if ! validate_env; then
+        log_event "ERROR" "Environment validation failed. Aborting."
+        return 1
+    fi
+
+    # 2. Configuration File Validation
+    if [ ! -f "${list_path}" ]; then
+        log_event "ERROR" "Master list file not found at: ${list_path}"
+        return 1
+    fi
+
+    [ "${DEBUG}" = true ] && log_event "DEBUG" "Processing master list: ${list_path} [Mode: ${mode}]"
+
+    while read -r asn table action dir log_en chains || [ -n "${asn}" ]; do
+        # Skip comments and empty lines
+        [[ "${asn}" =~ ^#.*$ || -z "${asn}" ]] && continue
+
+        # Construct set name consistently [cite: 2026-03-06]
+        set_name="AS${asn}v4"
+
+        # 3. Kernel Integrity Check: Ensure IPset is loaded [cite: 2026-03-05]
+        if ! ipset list "${set_name}" >/dev/null 2>&1; then
+            log_event "WARNING" "IPset ${set_name} missing from kernel. Skipping."
+            continue
+        fi
+
+        # 4. Chain Iteration and Rule Execution
+        for c in ${chains}; do
+            if [ "${mode}" == "apply" ]; then
+                apply_ipset_in_table_chain_action_src_or_dst "${set_name}" "${table}" "${c}" "${action}" "${dir}" "${log_en}"
+            else
+                remove_ipset_from_table_chain_action_src_or_dst "${set_name}" "${table}" "${c}" "${action}" "${dir}" "${log_en}"
+            fi
+        done
+    done < "${list_path}"
 }

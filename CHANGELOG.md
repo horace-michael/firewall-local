@@ -1,5 +1,42 @@
 # Changelog - Firewall-Local
 
+## [3.1.0] - 2026-03-06
+### Added
+- **Polymorphic IPset Engine**: Implemented `apply_ipset_in_table_chain_action_src_or_dst` to support multi-table (filter/nat) and multi-chain rule injection with dynamic directionality (src/dst).
+- **Atomic IPset Generation**: Added `generate_ipset_from_asn_list` using `ipset restore` and `rename` for zero-downtime kernel updates.
+- **Hardened Parser**: Created `process_firewall_master_list` featuring environmental validation and kernel-level IPset existence checks.
+- **Master List Architecture**: Introduced `asn_master.list` as the Single Source of Truth for centralizing ASN-based firewall policies.
+
+### `asn_master.list` Structure
+#### PATH: /etc/sysconfig/fw.local/hosts/asn_master.list
+####
+##### FIELDS:
+##### 1. ASN:    The Autonomous System Number (numeric) or a custom Alias. 
+#####            The system automatically prefixes this with 'AS' and suffixes with 'v4'.
+##### 2. TABLE:  The iptables table to target (usually 'filter' or 'nat').
+##### 3. ACTION: The iptables jump target (e.g., DROP, REJECT, RETURN).
+##### 4. DIR:    Direction of matching. Use 'src' for source or 'dst' for destination.
+##### 5. LOG:    Boolean (true/false). If true, a LOG rule is placed before the action.
+##### 6. CHAINS: Space-separated list of iptables chains where the rule should apply.
+#####
+##### ----------------------------------------------------------------------------------
+##### ASN       TABLE   ACTION   DIR   LOG     CHAINS
+##### ----------------------------------------------------------------------------------
+
+##### Example: Block incoming traffic from specific ASN
+####  212238      filter  DROP     src   true    INPUTFW
+
+##### Example: Reject outgoing traffic to specific ASN
+####  212238      filter  REJECT   dst   true    FORWARDFW
+
+##### Example: Bypass Proxy/GeoIP for Privacy Provider (Friend)
+####  208323      filter  RETURN   dst   false   FORWARDFW CUSTOMFORWARD
+
+##### Example: Custom Alias for Alibaba CN exceptions
+####    ALIBABA_CN  filter  RETURN   dst   false   CUSTOMFORWARD CUSTOMOUTPUT
+
+---
+
 ## [3.0.0] - 2026-03-05
 ### Added
 - Centralized library `/usr/local/bin/firewall_functions` for shared logic management.
