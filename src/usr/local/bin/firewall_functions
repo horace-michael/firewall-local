@@ -1,6 +1,6 @@
 #!/bin/bash
 # Description: Core library using standard H&M DEBUG logic
-# Version 3.1.0 2026-03-06
+# Version 3.2.0 2026-03-10
 # Check CHANGELOG.md for details
 # AUTHOR="H&M"
 
@@ -185,5 +185,134 @@ process_firewall_master_list() {
                 remove_ipset_from_table_chain_action_src_or_dst "${set_name}" "${table}" "${c}" "${action}" "${dir}" "${log_en}"
             fi
         done
+    done < "${list_path}"
+}
+
+process_ip_line() {
+    # Function to process agnostic IP/CIDR rules
+    local obj="${1}" table="${2}" action="${3}" dir="${4}" proto="${5}" ports="${6}" chains="${7}"
+    local dir_flag ports_cmd proto_cmd
+    
+    # Set Direction Flag
+    [ "${dir}" == "src" ] && dir_flag="-s" || dir_flag="-d"
+    
+    # Set Protocol and Ports logic
+    if [ "${proto}" == "all" ] || [ "${ports}" == "all" ]; then
+        proto_cmd=""
+        ports_cmd=""
+    else
+        proto_cmd="-p ${proto}"
+        ports_cmd="-m multiport --dports ${ports}"
+    fi
+
+    for chain in ${chains}; do
+        # Verify chain existence before applying
+        if iptables -t "${table}" -L "${chain}" >/dev/null 2>&1; then
+            # Check for existing rule to avoid duplicates (Jack Reacher: Avoid Redundancy)
+            iptables -t "${table}" -C "${chain}" ${dir_flag} "${obj}" "${proto_cmd}" "${ports_cmd}" -j "${action}" 2>/dev/null || \
+            iptables --wait -t "${table}" -I "${chain}" ${dir_flag} "${obj}" "${proto_cmd}" "${ports_cmd}" -j "${action}"
+        fi
+    done
+}
+
+process_ip_master_list() {
+    local list_path="${1:-/etc/sysconfig/fw.local/hosts/ip_master.list}"
+    local obj table action dir proto ports chains
+    
+    [ -f "$list_path" ] || return 1
+
+    while read -r obj table action dir proto ports chains || [ -n "$obj" ]; do
+        [[ "$obj" =~ ^#.*$ || -z "$obj" ]] && continue
+        
+        # If OBJECT points to a .hosts file, clean it line by line.
+        if [ -f "/etc/sysconfig/fw.local/hosts/${obj}.hosts" ]; then
+            while read -r line || [ -n "$line" ]; do
+                [[ "$line" =~ ^#.*$ || -z "$line" ]] && continue
+                # Strip inline comments: "192.168.1.1 # Text" -> "192.168.1.1"
+                local clean_ip
+                clean_ip=$(echo "$line" | sed 's/#.*//' | xargs)
+                process_ip_line "$clean_ip" "$table" "$action" "$dir" "$proto" "$ports" "$chains"
+            done < "/etc/sysconfig/fw.local/hosts/${obj}.hosts"
+        else
+            # Direct IP/CIDR from master list
+            process_ip_line "$obj" "$table" "$action" "$dir" "$proto" "$ports" "$chains"
+        fi
+    done < "$list_path"
+}
+
+resolve_smb_source_ip() {
+    # Pseudocode:
+    # 1. Validate IPFire environment.
+    # 2. Check if customhosts file exists and is non-zero size.
+    # 3. Search for fragment, extracting the 4th field (IP).
+    # 4. Return IP string or return error code 1.
+    local host_fragment="${1}"
+    local hosts_file="${2:-/var/ipfire/fwhosts/customhosts}"
+    local match
+    local src_ip
+
+    # 1. Verify IPFire environment via library function
+    if ! validate_env; then
+        log_event "ERROR" "Environment check failed. Not an IPFire system."
+        return 1
+    fi
+
+    # 2. Check file existence and size
+    if [ ! -s "${hosts_file}" ]; then
+        log_event "ERROR" "Hosts file missing or empty: ${hosts_file}"
+        return 1
+    fi
+
+    # 3. Resolve IP of a given part of a hostname (fragment) using the customhosts file
+    match=$(grep -i "${host_fragment}" "${hosts_file}" | grep ',ip,' | head -n1)
+    
+    if [ -n "${match}" ]; then
+        src_ip=$(echo "${match}" | awk -F',' '{print $4}' | cut -d'/' -f1)
+        printf "%s" "${src_ip}"
+        return 0
+    else
+        log_event "WARNING" "No IP found for Host fragment: ${host_fragment}"
+        return 1
+    fi
+}
+
+process_smb_master_list() {
+    # Pseudocode: Iterates through the SMB master list and applies iptables rules.
+    # 1. Validate file existence.
+    # 2. Loop through lines, resolving the source fragment to a real IP.
+    # 3. Apply multiport rules for SMB ports (135,137,138,139,445,1025).
+    local list_path="${1:-/etc/sysconfig/fw.local/hosts/smb_master.list}"
+    local mode="${2:-apply}"
+    local host_fragment action target_ip src_ip
+    local smb_ports="135,137,138,139,445,1025"
+    local ipt_cmd
+
+    # 1. Verify IPFire environment via library function
+    if ! validate_env; then
+        log_event "ERROR" "Environment check failed. Not an IPFire system."
+        return 1
+    fi
+
+    # 2. Check file existence and size
+    if [ ! -s "${list_path}" ]; then
+        log_event "ERROR" "SMB list file missing or empty: ${list_path}"
+        return 1
+    fi
+
+    [ "${mode}" == "apply" ] && ipt_cmd="-I" || ipt_cmd="-D"
+
+    while read -r host_fragment action target_ip || [ -n "${host_fragment}" ]; do
+        [[ "${host_fragment}" =~ ^#.*$ || -z "${host_fragment}" ]] && continue
+
+        if src_ip=$(resolve_smb_source_ip "${host_fragment}"); then
+            log_event "INFO" "SMB ${action}: ${host_fragment}(${src_ip}) -> ${target_ip}"
+            
+            # Apply rule to CUSTOMFORWARD
+            iptables --wait -t filter "${ipt_cmd}" CUSTOMFORWARD -s "${src_ip}" -d "${target_ip}" \
+                -p tcp -m multiport --dports "${smb_ports}" -j "${action}" 2>/dev/null || true
+        else
+            # Logic: Fallback if resolve_smb_source_ip returns non-zero
+            log_event "WARNING" "SMB: Could not resolve IP for ${host_fragment}"
+        fi
     done < "${list_path}"
 }

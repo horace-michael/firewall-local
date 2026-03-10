@@ -1,0 +1,41 @@
+# PATH: /etc/sysconfig/fw.local/hosts/ip_master.list
+# Version: 3.2.0 (Agnostic IP/Port)
+# FIELDS:
+# 1. OBJECT: IP, CIDR, or IPset Name (from a .hosts filename).
+# 2. TABLE:  filter / nat
+# 3. ACTION: ACCEPT / DROP / REJECT / RETURN
+# 4. DIR:    src / dst (determines if object is used for -s or -d)
+# 5. PROTO:  tcp / udp / all
+# 6. PORT:   Port, range (80:443), multiport (80,443) or 'all'
+# 7. CHAINS: Space-separated list of chains
+
+# ---------------------------------------------------------------------------------------
+# OBJECT            TABLE   ACTION  DIR  PROTO  PORT          CHAINS
+# ---------------------------------------------------------------------------------------
+
+# Applied Privacy DNS (Austria)
+109.70.100.0/24     filter  RETURN  dst  tcp    80,443,53,853 FORWARDFW CUSTOMFORWARD
+
+# Alibaba CN Exceptions
+203.119.128.0/17    filter  ACCEPT  dst  tcp    443           CUSTOMFORWARD CUSTOMOUTPUT
+140.205.0.0/16      filter  ACCEPT  dst  tcp    443           CUSTOMFORWARD CUSTOMOUTPUT
+59.82.32.0/21       filter  ACCEPT  dst  tcp    443           CUSTOMFORWARD CUSTOMOUTPUT
+59.82.24.0/21       filter  ACCEPT  dst  tcp    443           CUSTOMFORWARD CUSTOMOUTPUT
+59.82.112.0/21      filter  ACCEPT  dst  tcp    443           CUSTOMFORWARD CUSTOMOUTPUT
+
+# Compari.ro (Magyar Telekom HU)
+80.249.160.0/20     filter  ACCEPT  dst  tcp    80,443        CUSTOMFORWARD CUSTOMOUTPUT
+
+# LGTV Updates KR
+43.200.186.155      filter  ACCEPT  dst  tcp    80,443        CUSTOMFORWARD CUSTOMOUTPUT
+3.34.80.17          filter  ACCEPT  dst  tcp    80,443        CUSTOMFORWARD CUSTOMOUTPUT
+
+# Compex Drivers
+23.106.127.130/32   filter  RETURN  dst  tcp    443           FORWARDFW
+
+# PI - OSMC (Internal)
+192.168.10.4        nat     ACCEPT  src  all    all           CUSTOMPREROUTING
+192.168.10.4        filter  ACCEPT  src  tcp    80,443        OUTGOINGFW
+
+# Transparent proxy bypass for DigiCert OCSP 
+192.229.221.95      nat    ACCEPT  dst  tcp    80,443    CUSTOMPREROUTING

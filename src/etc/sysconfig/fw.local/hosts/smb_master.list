@@ -1,0 +1,12 @@
+# PATH: /etc/sysconfig/fw.local/hosts/ip_master.list
+# Version: 3.2.0 (Agnostic IP/Port)
+# FIELDS:
+# 1. Source/FROM: Host Fragment to be used for serach (fragment from a host filename).
+# 2. ACTION: ACCEPT / DROP / REJECT / RETURN
+# 3. IP address where SMB traffic should be allowed by IPFire
+# ---------------------------------------------------------------------------------------
+# Host_Fragment    ACTION    IP_DEST
+# ---------------------------------------------------------------------------------------
+Lenovo_T15         ACCEPT    192.168.10.2
+Lenovo_E320        ACCEPT    192.168.10.2
+Lenovo_T450        ACCEPT    192.168.10.47
