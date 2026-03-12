@@ -11,7 +11,7 @@
 set -u
 
 SCRIPT_NAME="$(basename "$0")"
-BASE_DIR="/root/.sysconfig/firewall.local"
+BASE_DIR="/etc/sysconfig/fw.local"
 HOSTS_FILE="$BASE_DIR/transparent_proxy_bypass.hosts"
 
 TABLE="nat"
