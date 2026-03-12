@@ -13,7 +13,7 @@
 #
 ###############################################################################
 
-BASEPATH="/root/.sysconfig/firewall.local"
+BASEPATH="/etc/sysconfig/fw.local"
 
 ALLOW_FILE="${BASEPATH}/allow_smb.hosts"
 BLOCK_FILE="${BASEPATH}/block_smb.hosts"

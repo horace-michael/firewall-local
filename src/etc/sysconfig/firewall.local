@@ -14,7 +14,7 @@
 #   No more dependencies on runlevel
 ###############################################################################
 
-CONFIG_DIR="/etc/sysconfig/fw.local/"
+CONFIG_DIR="/etc/sysconfig/fw.local"
 START_SUFFIX="_start.sh"
 STOP_SUFFIX="_stop.sh"
 LOGFILE="/var/log/firewall.local.log"
