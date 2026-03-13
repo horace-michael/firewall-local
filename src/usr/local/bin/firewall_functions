@@ -178,52 +178,67 @@ remove_ipset_from_table_chain_action_src_or_dst() {
 
 process_asn_master_list() {
     # Function: process_asn_master_list
-    # Pseudocode:
-    # 1. Validate IPFire environment integrity.
-    # 2. Check for the existence of the master list file.
-    # 3. Read the config line-by-line; ignore comments/empty lines.
-    # 4. For each entry, verify the IPset is present in kernel memory.
-    # 5. Iterate through the chains list and trigger the apply/remove function.
-    
+    # Role: Reads ASN master list and applies/removes iptables rules using ipsets.
+    # Pseudocode: 
+    #   1. Validate environment.
+    #   2. Check for missing ipsets in kernel.
+    #   3. If missing, use 'location' utility to fetch networks and 'ipset restore'.
+    #   4. Apply/Remove iptables rule referencing the ipset.
     local mode="${1:-apply}"
     local list_path="${2:-/etc/sysconfig/fw.local/hosts/asn_master.list}"
-    local asn table action dir log_en chains c
-    local set_name
-
-    # 1. Environment Validation
+    local asn table action dir log chains set_name ipt_cmd
+    
     if ! validate_env; then
-        log_event "ERROR" "Environment validation failed. Aborting."
+        log_event "ERROR" "Environment check failed."
         return 1
     fi
 
-    # 2. Configuration File Validation
-    if [ ! -f "${list_path}" ]; then
-        log_event "ERROR" "Master list file not found at: ${list_path}"
+    if [ ! -s "${list_path}" ]; then
+        log_event "ERROR" "ASN list missing: ${list_path}"
         return 1
     fi
 
-    [ "${DEBUG}" = true ] && log_event "DEBUG" "Processing master list: ${list_path} [Mode: ${mode}]"
+    [ "${mode}" == "apply" ] && ipt_cmd="-I" || ipt_cmd="-D"
 
-    while read -r asn table action dir log_en chains || [ -n "${asn}" ]; do
-        # Skip comments and empty lines
+    while read -r asn table action dir log chains || [ -n "${asn}" ]; do
         [[ "${asn}" =~ ^#.*$ || -z "${asn}" ]] && continue
-
-        # Construct set name consistently
+        
+        # Normalize variables
+        asn=$(echo "${asn}" | xargs)
         set_name="AS${asn}v4"
-
-        # 3. Kernel Integrity Check: Ensure IPset is loaded
+        
+        # STEP: Provisioning Logic (The missing part from legacy scripts)
         if ! ipset list "${set_name}" >/dev/null 2>&1; then
-            log_event "WARNING" "IPset ${set_name} missing from kernel. Skipping."
-            continue
+            if [ "${mode}" == "apply" ]; then
+                [ "${DEBUG}" = "true" ] && printf "[DEBUG] Provisioning %s...\n" "${set_name}"
+                location list-networks-by-as --format=ipset --family=ipv4 "${asn}" > "/etc/ipset/${set_name}.ipset"
+                if [ -s "/etc/ipset/${set_name}.ipset" ]; then
+                    ipset restore < "/etc/ipset/${set_name}.ipset"
+                    log_event "INFO" "Created and loaded IPset: ${set_name}"
+                else
+                    log_event "ERROR" "Could not fetch data for ASN: ${asn}"
+                    continue
+                fi
+            else
+                [ "${DEBUG}" = "true" ] && printf "[DEBUG] Skip provision for removal: %s\n" "${set_name}"
+                continue
+            fi
         fi
 
-        # 4. Chain Iteration and Rule Execution
-        for c in ${chains}; do
-            if [ "${mode}" == "apply" ]; then
-                apply_ipset_in_table_chain_action_src_or_dst "${set_name}" "${table}" "${c}" "${action}" "${dir}" "${log_en}"
-            else
-                remove_ipset_from_table_chain_action_src_or_dst "${set_name}" "${table}" "${c}" "${action}" "${dir}" "${log_en}"
-            fi
+        # STEP: Apply Rules
+        IFS=',' read -r -a chain_array <<< "$(echo "${chains}" | tr ' ' ',')"
+        for target_chain in "${chain_array[@]}"; do
+            [ -z "${target_chain}" ] && continue
+            
+            local match_dir="src"
+            [ "${dir}" == "dst" ] && match_dir="dst"
+
+            # Execute iptables command
+            iptables --wait -t "${table}" "${ipt_cmd}" "${target_chain}" \
+                -m set --match-set "${set_name}" "${match_dir}" \
+                -j "${action}"
+            
+            [ "${DEBUG}" = "true" ] && printf "[DEBUG] ASN %s %s to %s\n" "${asn}" "${mode}" "${target_chain}"
         done
     done < "${list_path}"
 }
