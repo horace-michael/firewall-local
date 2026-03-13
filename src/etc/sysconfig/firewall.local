@@ -72,12 +72,12 @@ case "$1" in
         validate_env || exit 1
 
         # Phase 1: Process Master Lists (SST)
-        log_event "INFO" "Starting process_asn_master_list gainst asn_master.list apply..."
-        [ -f "${HOSTS_DIR}/asn_master.list" ] && process_asn_master_list "${HOSTS_DIR}/asn_master.list" "apply"
-        log_event "INFO" "Starting process_ip_master_list gainst ip_master.list apply..."
-        [ -f "${HOSTS_DIR}/ip_master.list" ] && process_ip_master_list "${HOSTS_DIR}/ip_master.list" "apply"
-        log_event "INFO" "Starting process_smb_master_list gainst smb_master.list apply..."
-        [ -f "${HOSTS_DIR}/smb_master.list" ] && process_smb_master_list "${HOSTS_DIR}/smb_master.list" "apply"
+        log_event "INFO" "Starting process_asn_master_list apply asn_master.list ..."
+        [ -f "${HOSTS_DIR}/asn_master.list" ] && process_asn_master_list "apply" "${HOSTS_DIR}/asn_master.list"
+        log_event "INFO" "Starting process_ip_master_list apply ip_master.list ..."
+        [ -f "${HOSTS_DIR}/ip_master.list" ] && process_ip_master_list "apply" "${HOSTS_DIR}/ip_master.list"
+        log_event "INFO" "Starting process_smb_master_list apply smb_master.list ..."
+        [ -f "${HOSTS_DIR}/smb_master.list" ] && process_smb_master_list "apply" "${HOSTS_DIR}/smb_master.list"
 
         # Phase 2: Run legacy modular scripts
         run_scripts "${START_SUFFIX}"
@@ -87,12 +87,12 @@ case "$1" in
         log_event "INFO" "Stopping firewall-local modules..."
 
         # Phase 1: Reverse Master Lists
-        log_event "INFO" "Starting process_asn_master_list gainst asn_master.list remove..."
-        [ -f "${HOSTS_DIR}/asn_master.list" ] && process_asn_master_list "${HOSTS_DIR}/asn_master.list" "remove"
-        log_event "INFO" "Starting process_ip_master_list gainst ip_master.list remove..."
-        [ -f "${HOSTS_DIR}/ip_master.list" ] && process_ip_master_list "${HOSTS_DIR}/ip_master.list" "remove"
-        log_event "INFO" "Starting process_smb_master_list gainst smb_master.list remove..."
-        [ -f "${HOSTS_DIR}/smb_master.list" ] && process_smb_master_list "${HOSTS_DIR}/smb_master.list" "remove"
+        log_event "INFO" "Starting process_asn_master_list remove asn_master.list..."
+        [ -f "${HOSTS_DIR}/asn_master.list" ] && process_asn_master_list "remove" "${HOSTS_DIR}/asn_master.list"
+        log_event "INFO" "Starting process_ip_master_list remove ip_master.list..."
+        [ -f "${HOSTS_DIR}/ip_master.list" ] && process_ip_master_list "remove" "${HOSTS_DIR}/ip_master.list"
+        log_event "INFO" "Starting process_smb_master_list remove smb_master.list..."
+        [ -f "${HOSTS_DIR}/smb_master.list" ] && process_smb_master_list "remove" "${HOSTS_DIR}/smb_master.list"
 
         # Phase 2: Run legacy stop scripts
         run_scripts "${STOP_SUFFIX}"

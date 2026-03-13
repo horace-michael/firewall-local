@@ -257,24 +257,31 @@ process_ip_line() {
 
 process_ip_master_list() {
     local list_path="${1:-/etc/sysconfig/fw.local/hosts/ip_master.list}"
-    local obj table action dir proto ports chains
-    
+    local mode="${2:-apply}" # Initialize variables first
+    local obj table action dir proto ports chains clean_line clean_ip
+
     [ -f "$list_path" ] || return 1
 
-    while read -r obj table action dir proto ports chains || [ -n "$obj" ]; do
-        [[ "$obj" =~ ^#.*$ || -z "$obj" ]] && continue
+    while read -r raw_line || [ -n "$raw_line" ]; do
+        # 1. Strip CR and leading/trailing whitespace
+        clean_line=$(echo "${raw_line}" | tr -d '\r' | xargs)
+        [[ "$clean_line" =~ ^#.*$ || -z "$clean_line" ]] && continue
         
-        # If OBJECT points to a .hosts file, clean it line by line.
+        # 2. Parse from cleaned line to avoid " tcp" errors
+        read -r obj table action dir proto ports chains <<< "$clean_line"
+        
+        # 3. Clean each variable (Jack Reacher Rule)
+        proto=$(echo "$proto" | xargs)
+        
+        [ "${DEBUG}" = "true" ] && printf "[DEBUG] [IP_LINE] Obj: %s Proto: %s\n" "$obj" "$proto"
+
         if [ -f "/etc/sysconfig/fw.local/hosts/${obj}.hosts" ]; then
+            # Logic for .hosts files...
             while read -r line || [ -n "$line" ]; do
-                [[ "$line" =~ ^#.*$ || -z "$line" ]] && continue
-                # Strip inline comments: "192.168.1.1 # Text" -> "192.168.1.1"
-                local clean_ip
                 clean_ip=$(echo "$line" | sed 's/#.*//' | xargs)
-                process_ip_line "$clean_ip" "$table" "$action" "$dir" "$proto" "$ports" "$chains"
+                [ -n "$clean_ip" ] && process_ip_line "$clean_ip" "$table" "$action" "$dir" "$proto" "$ports" "$chains"
             done < "/etc/sysconfig/fw.local/hosts/${obj}.hosts"
         else
-            # Direct IP/CIDR from master list
             process_ip_line "$obj" "$table" "$action" "$dir" "$proto" "$ports" "$chains"
         fi
     done < "$list_path"
