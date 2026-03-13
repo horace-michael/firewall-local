@@ -1,52 +1,83 @@
 #!/bin/bash
 ###############################################################################
-# firewall.local – modular firewall loader (verbose)
-# VERSION="3.0.0 2026-03-05"
+# firewall.local – Modular firewall orchestrator (SST Integrated)
+# VERSION="3.3.1 2026-03-13"
 # AUTHOR="H&M"
-# see CHANGELOG.md for details
 ###############################################################################
 
-# 1. Initialize variables first
-CONFIG_DIR="/etc/sysconfig/fw.local/"
+# 1. Initialize variables
+CONFIG_DIR="/etc/sysconfig/fw.local"
+HOSTS_DIR="${CONFIG_DIR}/hosts"
 START_SUFFIX="_start.sh"
 STOP_SUFFIX="_stop.sh"
 DEBUG="${DEBUG:-false}"
 
-# 2. Source library - ShellCheck SC1091 Fix
-# shellcheck source=/dev/null
-. /usr/local/bin/firewall_functions
+# 2. Source library - ShellCheck SC1090/SC1091 Fix
+# Pointing to the source file relative to repo root for dev-time validation
+# SC1090 Fix: Tell ShellCheck we intend for this to be dynamic
+# shellcheck source=/dev/null 
+if [ -f "/usr/local/bin/firewall_functions" ]; then
+    . /usr/local/bin/firewall_functions
+else
+    logger -t "FIREWALL_LOCAL" "[ERROR] Library missing: /usr/local/bin/firewall_functions"
+    exit 1
+fi
 
+# 3. Define functions
 run_scripts() {
-    local SUFFIX="$1"
-    for script in "$CONFIG_DIR"/*"$SUFFIX"; do
-        [ -x "$script" ] || continue
-        log_event "INFO" "executing $script"
-        if ! bash -c ". '$script'"; then
-            log_event "ERROR" "failed to execute $script"
+    # Pseudocode: Source modular scripts in current shell context
+    local suffix="${1}"
+    local script=""
+
+    for script in "${CONFIG_DIR}"/*"${suffix}"; do
+        [ -x "${script}" ] || continue
+        
+        log_event "INFO" "Executing modular script: ${script}"
+        # SC1090 Fix: Tell ShellCheck we intend for this to be dynamic
+        # shellcheck source=/dev/null
+        if ! . "${script}"; then
+            log_event "ERROR" "Execution failed: ${script}"
         fi
     done
 }
 
+# 4. Main Execution Logic
 case "$1" in
     start)
-        log_event "INFO" "starting module load"
-        run_scripts "$START_SUFFIX"
+        log_event "INFO" "Starting firewall-local modular load..."
+        
+        # Validate environment before making changes
+        validate_env || exit 1
+
+        # Phase 1: Process Master Lists (SST)
+        [ -f "${HOSTS_DIR}/asn_master.list" ] && process_asn_master_list "${HOSTS_DIR}/asn_master.list" "apply"
+        [ -f "${HOSTS_DIR}/ip_master.list" ] && process_ip_master_list "${HOSTS_DIR}/ip_master.list" "apply"
+        [ -f "${HOSTS_DIR}/smb_master.list" ] && process_smb_master_list "${HOSTS_DIR}/smb_master.list" "apply"
+
+        # Phase 2: Run legacy modular scripts
+        run_scripts "${START_SUFFIX}"
         ;;
 
     stop)
-        log_event "INFO" "stopping modules - unloading"
-        run_scripts "$STOP_SUFFIX"
-	# v2.5.1 - CUSTOM_chains_stop.sh
+        log_event "INFO" "Stopping firewall-local modules..."
+
+        # Phase 1: Reverse Master Lists
+        [ -f "${HOSTS_DIR}/asn_master.list" ] && process_asn_master_list "${HOSTS_DIR}/asn_master.list" "remove"
+        [ -f "${HOSTS_DIR}/ip_master.list" ] && process_ip_master_list "${HOSTS_DIR}/ip_master.list" "remove"
+        [ -f "${HOSTS_DIR}/smb_master.list" ] && process_smb_master_list "${HOSTS_DIR}/smb_master.list" "remove"
+
+        # Phase 2: Run legacy stop scripts
+        run_scripts "${STOP_SUFFIX}"
         ;;
 
     reload)
-        log_event "INFO" "reload"
-        $0 stop
-        $0 start
+        log_event "INFO" "Reloading firewall-local..."
+        "$0" stop
+        "$0" start
         ;;
 
     *)
-        log_event "WARNING" "unknown action $1, ignoring"
+        log_event "WARNING" "Unknown action: $1 - Ignoring."
         exit 0
         ;;
 esac

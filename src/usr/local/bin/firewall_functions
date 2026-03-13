@@ -1,6 +1,6 @@
 #!/bin/bash
 # Description: Core library using standard H&M DEBUG logic
-# Version 3.2.0 2026-03-10
+# Version 3.3.0 2026-03-13
 # Check CHANGELOG.md for details
 # AUTHOR="H&M"
 
@@ -38,22 +38,39 @@ validate_env() {
 generate_ipset_from_asn_list() {
     # Function: generate_ipset_from_asn_list
     # Pseudocode:
-    # 1. Fetch ASN data into a temporary generic set name.
-    # 2. Rename the set atomically to the Final Action Name.
-    # 3. Example: AS51852_DROP or AS51852_BYP.
+    # 1. Create a unique temporary set.
+    # 2. Populate temporary set via 'location' and 'restore'.
+    # 3. Swap temporary set with live set (Atomic).
+    # 4. Cleanup temporary set.
 
     local asn="${1}"
-    local action="${2:-DROP}" # Options: DROP, BYP
+    local action="${2:-DROP}" 
     local target_name="AS${asn}_${action}"
+    local temp_name="${target_name}_tmp"
+    local ipset_file="/tmp/${temp_name}.ipset"
 
-    # Fetch to default location format
-    location list-networks-by-as --format=ipset --family=ipv4 "${asn}" > "/tmp/as.ipset"
+    # 1. Fetch data and modify the set name in the dump file to use temp_name
+    # 'location' outputs 'create AS<num>v4' - we sed it to temp_name
+    location list-networks-by-as --format=ipset --family=ipv4 "${asn}" | \
+        sed "s/AS${asn}v4/${temp_name}/g" > "${ipset_file}"
     
-    # Atomic transition: Restore then Rename
-    ipset restore < "/tmp/as.ipset"
-    ipset rename "AS${asn}v4" "${target_name}"
+    # 2. Restore the temporary set into memory
+    ipset restore < "${ipset_file}"
     
-    log_event "INFO" "Set ${target_name} is now active in kernel."
+    # 3. Atomic Swap
+    # If target_name doesn't exist, we rename. If it does, we swap.
+    if ipset list "${target_name}" >/dev/null 2>&1; then
+        log_event "INFO" "Live swapping ${target_name} with new data."
+        ipset swap "${temp_name}" "${target_name}"
+        ipset destroy "${temp_name}"
+    else
+        log_event "INFO" "First time creation of ${target_name}."
+        ipset rename "${temp_name}" "${target_name}"
+    fi
+    
+    # Cleanup
+    rm -f "${ipset_file}"
+    log_event "INFO" "SST Update Complete: ${target_name}"
 }
 
 apply_ipset_in_table_chain_action_src_or_dst() {
@@ -136,8 +153,8 @@ remove_ipset_from_table_chain_action_src_or_dst() {
     iptables --wait -t "${table}" -D "${chain}" -m set --match-set "${set_name}" "${src_dst}" -j "${action}" 2>/dev/null
 }
 
-process_firewall_master_list() {
-    # Function: process_firewall_master_list
+process_asn_master_list() {
+    # Function: process_asn_master_list
     # Pseudocode:
     # 1. Validate IPFire environment integrity.
     # 2. Check for the existence of the master list file.
