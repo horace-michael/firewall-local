@@ -1,6 +1,0 @@
-# One destination per line
-# IP or CIDR
-# Lines starting with # are ignored
-
-192.229.221.95        # DigiCert OCSP
-#192.229.210.0/24      # DigiCert infra
