@@ -137,33 +137,31 @@ sync_versioning() {
 # 2. Iterate 'src' files; remove 'src/' prefix.
 # 3. Use '#' prefix for persistent configs (hosts/*.list, hosts/*.hosts).
 generate_rootfiles() {
-    local manifest="ROOTFILES"
-    local source_dir="src"
-    local line_path=""
+    local manifest="${MANIFEST}"
+    local source_dir="${SRC_DIR}"
 
-    # Header - Overwrite old manifest
-    printf "# firewall-local manifest\\n# Generated: %s\\n\\n" "$(date)" > "$manifest"
+    # Create temporary file for paths
+    tmp_paths=$(mktemp)
 
-    # Process files using a while loop to handle paths safely
+    # Find files and determine if they are persistent (#) or standard
     find "$source_dir" -type f | while read -r line_path; do
-        # Strip the 'src/' prefix
         local relative_path="${line_path#"$source_dir"/}"
-
-        # Logic: If file is in 'hosts' or is a .list, mark as config (#)
-        # Persistent files are NOT deleted on upgrade/uninstall.
-        if [[ "$relative_path" == *"/hosts/"* ]]; then
-            echo "#$relative_path" >> "$manifest"
+        if [[ "$relative_path" == *"/hosts/"* || "$relative_path" == *.list ]]; then
+            echo "#$relative_path" >> "$tmp_paths"
         else
-            echo "$relative_path" >> "$manifest"
+            echo "$relative_path" >> "$tmp_paths"
         fi
     done
 
-    # Sort manifest for consistency (excluding header)
-    (head -n 2 "$manifest" && tail -n +3 "$manifest" | sort -u) > "${manifest}.tmp" && mv "${manifest}.tmp" "$manifest"
-    # Ensure file is written and sorted before next function reads it
+    # Write Header
+    printf "# %s manifest\\n# Generated: %s\\n\\n" "$NAME" "$(date)" > "$manifest"
+    
+    # Append sorted paths
+    sort -u "$tmp_paths" >> "$manifest"
+    rm -f "$tmp_paths"
+    
     sync
 }
-
 generate_checksum() {
     # Function: generate_checksum
     # Pseudocode: Create SHA256 hash for the final .ipfire package.
