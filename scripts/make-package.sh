@@ -105,7 +105,8 @@ sync_versioning() {
     # Pseudocode: Inject current version into installer and manifest.
     
     # Update version in install.sh
-    sed -i "s/^VERSION=.*/VERSION=\"${VERSION}\"/" "${SRC_DIR}/install.sh"
+    sed -i "s/^VERSION=.*/VERSION=\"${VERSION}\"/" "${REPO_ROOT}/install.sh"
+    sed -i "s/^VERSION=.*/VERSION=\"${VERSION}\"/" "${REPO_ROOT}/uninstall.sh"
     # Update timestamp in ROOTFILES
     #sed -i "s/^# Generated:.*/# Generated: $(date)/" "${REPO_ROOT}/ROOTFILES"
 }
