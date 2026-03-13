@@ -20,7 +20,7 @@ generate_rootfiles() {
     # Process files using a while loop to handle paths safely
     find "$source_dir" -type f | while read -r line_path; do
         # Strip the 'src/' prefix
-        local relative_path="${line_path#$source_dir/}"
+        local relative_path="${line_path#"$source_dir"/}"
 
         # Logic: If file is in 'hosts' or is a .list, mark as config (#)
         # Persistent files are NOT deleted on upgrade/uninstall.

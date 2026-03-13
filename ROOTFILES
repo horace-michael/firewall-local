@@ -1,15 +1,5 @@
 
 etc/sysconfig/firewall.local
-etc/sysconfig/fw.local/ALIBABA_CN_start.sh
-etc/sysconfig/fw.local/allow_smb_customhost.sh
-etc/sysconfig/fw.local/Applied_Privacy_DNS_AT_start.sh
-etc/sysconfig/fw.local/Applied_Privacy_DNS_AT_stop.sh
-etc/sysconfig/fw.local/ASN2Block_start.sh
-etc/sysconfig/fw.local/ASN2Block_stop.sh
-etc/sysconfig/fw.local/COMPARI_RO_HU_start.sh
-etc/sysconfig/fw.local/compex.com.sg_start.sh
-etc/sysconfig/fw.local/compex.com.sg_stop.sh
-etc/sysconfig/fw.local/CUSTOM_chains_stop.sh
 #etc/sysconfig/fw.local/hosts/allow_smb.hosts
 #etc/sysconfig/fw.local/hosts/asn_master.list
 #etc/sysconfig/fw.local/hosts/block_smb.hosts
@@ -17,24 +7,6 @@ etc/sysconfig/fw.local/CUSTOM_chains_stop.sh
 #etc/sysconfig/fw.local/hosts/smb_master.list
 #etc/sysconfig/fw.local/hosts/target_smb.hosts
 #etc/sysconfig/fw.local/hosts/transparent_proxy_bypass.hosts
-etc/sysconfig/fw.local/LGTV_UPDATES_KR_start.sh
-etc/sysconfig/fw.local/PI_OSMC_start.sh
-etc/sysconfig/fw.local/PI_OSMC_stop.sh
-etc/sysconfig/fw.local/REVOLUT_USA_start.sh
-etc/sysconfig/fw.local/SAMSUNG_UPDATES_KR_start.sh
-etc/sysconfig/fw.local/SDCARD_JP_start.sh
-etc/sysconfig/fw.local/smb_customhost.sh
-etc/sysconfig/fw.local/smb_hosts_start.sh
-etc/sysconfig/fw.local/transparent_proxy_bypass.hosts
-etc/sysconfig/fw.local/transparent_proxy_bypass_start.sh
-etc/sysconfig/fw.local/WG_log_w_WG-HANDSHAKE_level-4_start.sh
-etc/sysconfig/fw.local/WG_log_w_WG-HANDSHAKE_level-4_stop.sh
-etc/sysconfig/fw.local/WHOIS_EXCEPTIONS_start.sh
-etc/sysconfig/fw.local/WHOIS_EXCEPTIONS_stop.sh
-etc/sysconfig/fw.local/WHOIS_RIR_EXCEPTIONS_start.sh
-etc/sysconfig/fw.local/WHOIS_RIR_EXCEPTIONS_stop.sh
-etc/sysconfig/fw.local/ZscalerBlock_start.sh
-etc/sysconfig/fw.local/ZscalerBlock_stop.sh
 # firewall-local manifest
-# Generated: Fri Mar 13 09:32:57 AM EET 2026
+# Generated: Fri Mar 13 09:37:18 AM EET 2026
 usr/local/bin/firewall_functions
