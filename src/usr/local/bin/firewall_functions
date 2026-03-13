@@ -45,10 +45,10 @@ log_event() {
 }
 
 validate_env() {
-    # Pseudocode: Confirm IPFire identity and directory structure [cite: 2026-01-29]
+    # Pseudocode: Confirm IPFire identity and directory structure
     [ "${DEBUG}" = true ] && log_event "DEBUG" "Verifying environment integrity..."
     
-    # Check both conditions directly to avoid SC2181 [cite: 2026-03-05]
+    # Check both conditions directly to avoid SC2181
     if [ -d "/var/ipfire" ] && grep -q "ipfire" /etc/os-release 2>/dev/null; then
         log_event "INFO" "IPFire environment detected successfully."
         return 0
@@ -208,10 +208,10 @@ process_asn_master_list() {
         # Skip comments and empty lines
         [[ "${asn}" =~ ^#.*$ || -z "${asn}" ]] && continue
 
-        # Construct set name consistently [cite: 2026-03-06]
+        # Construct set name consistently
         set_name="AS${asn}v4"
 
-        # 3. Kernel Integrity Check: Ensure IPset is loaded [cite: 2026-03-05]
+        # 3. Kernel Integrity Check: Ensure IPset is loaded
         if ! ipset list "${set_name}" >/dev/null 2>&1; then
             log_event "WARNING" "IPset ${set_name} missing from kernel. Skipping."
             continue
@@ -321,38 +321,58 @@ process_smb_master_list() {
     # 1. Validate file existence.
     # 2. Loop through lines, resolving the source fragment to a real IP.
     # 3. Apply multiport rules for SMB ports (135,137,138,139,445,1025).
+
+    # 1. Initialize variables first
     local list_path="${1:-/etc/sysconfig/fw.local/hosts/smb_master.list}"
     local mode="${2:-apply}"
-    local host_fragment action target_ip src_ip
+    local host_fragment="" action="" target_ip="" src_ip=""
     local smb_ports="135,137,138,139,445,1025"
-    local ipt_cmd
+    local ipt_cmd=""
+    local clean_line=""
 
-    # 1. Verify IPFire environment via library function
+    # 1. Verify environment
     if ! validate_env; then
-        log_event "ERROR" "Environment check failed. Not an IPFire system."
+        log_event "ERROR" "Environment check failed."
         return 1
     fi
 
-    # 2. Check file existence and size
+    # 2. Check file
     if [ ! -s "${list_path}" ]; then
-        log_event "ERROR" "SMB list file missing or empty: ${list_path}"
+        log_event "ERROR" "SMB list file missing/empty: ${list_path}"
         return 1
     fi
 
-    [ "${mode}" == "apply" ] && ipt_cmd="-I" || ipt_cmd="-D"
+    # Set command type based on mode
+    [ "${mode}" == "apply" ] && ipt_cmd="-I" || ipt_cmd="-D" 
 
-    while read -r host_fragment action target_ip || [ -n "${host_fragment}" ]; do
-        [[ "${host_fragment}" =~ ^#.*$ || -z "${host_fragment}" ]] && continue
+    # Debug: Identify which list is being processed
+    [ "${DEBUG}" = "true" ] && printf "[DEBUG] [SMB_MASTER] Mode: %s Path: %s\n" "${mode}" "${list_path}"
+
+    while read -r raw_line || [ -n "${raw_line}" ]; do
+        # Strip CR and leading/trailing whitespace to fix " tcp" error
+        clean_line=$(echo "${raw_line}" | tr -d '\r' | xargs)
+        
+        # Skip comments and empty lines
+        [[ "${clean_line}" =~ ^#.*$ || -z "${clean_line}" ]] && continue
+
+        # Parse from cleaned line
+        read -r host_fragment action target_ip <<< "${clean_line}"
+        
+        # Sanitize individual variables (Jack Reacher Rule: Assumption kills)
+        host_fragment=$(echo "${host_fragment}" | xargs)
+        action=$(echo "${action}" | xargs)
+        target_ip=$(echo "${target_ip}" | xargs)
+
+        [ "${DEBUG}" = "true" ] && printf "[DEBUG] [SMB_LINE] Frag: %s Act: %s IP: %s\n" "${host_fragment}" "${action}" "${target_ip}"
 
         if src_ip=$(resolve_smb_source_ip "${host_fragment}"); then
             log_event "INFO" "SMB ${action}: ${host_fragment}(${src_ip}) -> ${target_ip}"
             
-            # Apply rule to CUSTOMFORWARD
+            # Use sanitized variables to avoid " tcp" protocol error
             iptables --wait -t filter "${ipt_cmd}" CUSTOMFORWARD -s "${src_ip}" -d "${target_ip}" \
-                -p tcp -m multiport --dports "${smb_ports}" -j "${action}" 2>/dev/null || true
+                -p tcp -m multiport --dports "${smb_ports}" -j "${action}" 2>/dev/null || true 
         else
-            # Logic: Fallback if resolve_smb_source_ip returns non-zero
-            log_event "WARNING" "SMB: Could not resolve IP for ${host_fragment}"
+            log_event "WARNING" "SMB: Could not resolve IP for ${host_fragment}" 
         fi
     done < "${list_path}"
 }
