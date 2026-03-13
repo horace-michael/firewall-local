@@ -330,8 +330,8 @@ process_smb_master_list() {
     # 3. Apply multiport rules for SMB ports (135,137,138,139,445,1025).
 
     # 1. Initialize variables first
-    local list_path="${1:-/etc/sysconfig/fw.local/hosts/smb_master.list}"
-    local mode="${2:-apply}"
+    local list_path="${2:-/etc/sysconfig/fw.local/hosts/smb_master.list}"
+    local mode="${1:-apply}"
     local host_fragment="" action="" target_ip="" src_ip=""
     local smb_ports="135,137,138,139,445,1025"
     local ipt_cmd=""
