@@ -1,27 +1,30 @@
-# PATH: /etc/sysconfig/fw.local/hosts/asn_master.list
-# Version: 3.1.0 (Consolidated)
+#################################################################################
+# PATH: /etc/sysconfig/fw.local/hosts/asn_master.list                           #
+# VERSION="1.0.0 2026-03-13"                                                    #
+#                                                                               #
+# MIT License                                                                   #
+#                                                                               #
+# Copyright (c) 2026 H&M                                                        #
+#                                                                               #
+# Permission is hereby granted, free of charge, to any person obtaining a copy  #
+# of this software and associated documentation files (the "Software"), to deal #
+# in the Software without restriction, including without limitation the rights  #
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell     #
+# copies of the Software, and to permit persons to whom the Software is         #
+# furnished to do so, subject to the following conditions:                      #
+#                                                                               #
+# The above copyright notice and this permission notice shall be included in all#
+# copies or substantial portions of the Software.                               #
+#                                                                               #
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR    #
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,      #
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE   #
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER        #
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, #
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE #
+# SOFTWARE.                                                                     #
+#################################################################################
+# 
 # ----------------------------------------------------------------------------------
 # ASN           TABLE   ACTION   DIR   LOG     CHAINS
 # ----------------------------------------------------------------------------------
-
-# --- ASN2Block Module (Security Hardening) ---
-212238          filter  DROP     src   true    INPUTFW
-212238          filter  REJECT   dst   true    FORWARDFW
-51852           filter  DROP     src   true    INPUTFW
-51852           filter  REJECT   dst   true    FORWARDFW
-
-# --- Zscaler Infrastructure (Bypass/Accept) ---
-22616           nat     ACCEPT   dst   true    CUSTOMPREROUTING
-32921           nat     ACCEPT   dst   true    CUSTOMPREROUTING
-40384           nat     ACCEPT   dst   true    CUSTOMPREROUTING
-53444           nat     ACCEPT   dst   true    CUSTOMPREROUTING
-53813           nat     ACCEPT   dst   true    CUSTOMPREROUTING
-55242           nat     ACCEPT   dst   true    CUSTOMPREROUTING
-62044           nat     ACCEPT   dst   true    CUSTOMPREROUTING
-62907           nat     ACCEPT   dst   true    CUSTOMPREROUTING
-
-# --- Applied Privacy DNS (Austria Bypass) ---
-208323          filter  RETURN   dst   false   FORWARDFW CUSTOMFORWARD
-
-# --- Alibaba CN Exceptions (Custom Alias) ---
-ALIBABA_CN      filter  RETURN   dst   false   CUSTOMFORWARD CUSTOMOUTPUT
