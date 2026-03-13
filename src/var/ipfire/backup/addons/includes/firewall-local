@@ -1,0 +1,4 @@
+/etc/sysconfig/fw.local/hosts/smb_master.list
+/etc/sysconfig/fw.local/hosts/ip_master.list
+/etc/sysconfig/fw.local/hosts/asn_master.list
+/etc/sysconfig/firewall.local

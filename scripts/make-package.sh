@@ -45,9 +45,23 @@ check_files_from_manifest() {
     [ ! -s "${MANIFEST}" ] && { printf "ERROR: Manifest empty\n"; exit 1; }
 
     while read -r line || [ -n "${line}" ]; do
-        [[ "$line" =~ ^#.* || -z "$line" ]] && line="${line#\#}"
+        # 1. Skip empty lines
+        [[ -z "$line" ]] && continue
+        
+        # 2. Skip descriptive comments (Header)
+        # We only care about lines starting with # if they are followed by a path (config)
+        # Official IPFire paths start with etc, usr, var, opt, bin, sbin
+        if [[ "$line" =~ ^# ]]; then
+             # Extract the path by removing the #
+             clean_path="${line#\#}"
+             # If the remaining string doesn't look like a system path, it's a header comment
+             [[ ! "$clean_path" =~ ^(etc|usr|var|opt|bin|sbin) ]] && continue
+             line="$clean_path"
+        fi
+
+        # 3. Final verification against the src directory
         if [ ! -f "${SRC_DIR}/${line}" ]; then
-            printf "ERROR: Missing file from manifest: %s\n" "${SRC_DIR}/${line}"
+            printf "ERROR: Missing file from manifest: %s/%s\n" "${SRC_DIR}" "${line}"
             exit 1
         fi
     done < "${MANIFEST}"
@@ -88,15 +102,21 @@ build_package() {
 
 generate_backup_includes() {
     # Function: generate_backup_includes
-    # Logic: Scan src/etc and generates a backup include file for the backup system, ensuring only config files are included.
+    # Logic: Scan only the data subdirectories to avoid backing up static package scripts.
     local include_dir="${SRC_DIR}/var/ipfire/backup/addons/includes"
     local include_file="${include_dir}/${NAME}"
 
     mkdir -p "${include_dir}"
-    # Only backup files from /etc/ (configs), add leading slash
-    if [ -d "${SRC_DIR}/etc" ]; then
-        find "${SRC_DIR}/etc" -type f | sed "s|${SRC_DIR}/|/|" > "${include_file}"
+    
+    # 1. Clear file if exists
+    : > "${include_file}"
+
+    # 2. Only include files from the persistent data directory (fw.local)
+    # This excludes /etc/sysconfig/firewall.local automatically
+    if [ -d "${SRC_DIR}/etc/sysconfig/fw.local" ]; then
+        find "${SRC_DIR}/etc/sysconfig/fw.local" -type f | sed "s|${SRC_DIR}/|/|" >> "${include_file}"
     fi
+    
     [ "${DEBUG}" = true ] && printf "[DEBUG] Generated backup includes: %s\n" "${include_file}"
 }
 
