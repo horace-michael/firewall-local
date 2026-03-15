@@ -102,9 +102,10 @@ build_package() {
 
     # Check if we have any directories to archive
     if [ -z "${discovered_dirs}" ]; then
-        [ "${DEBUG}" = true ] && printf "[ERROR] No directories found in %s to archive\n" "${SRC_DIR}"
-        return 1
+        [ "${DEBUG}" = true ] && printf "[WARNING] No directories found in %s. Creating empty payload.\\n" "${SRC_DIR}"
+        tar -cJf "${PAYLOAD_NAME}" -T /dev/null
     else
+        [ "${DEBUG}" = true ] && printf "[DEBUG] Final assembly for folders: %s\\n" "${discovered_dirs}"
         # FIX: Archive directories directly (etc usr var) instead of using '.'
         # This ensures paths in the archive start with 'var/' not './var/'
         # FIX: We NEED word splitting here so tar gets separate arguments.
@@ -116,6 +117,7 @@ build_package() {
     [ "${DEBUG}" = true ] && printf "[DEBUG] Final assembly: %s\n" "${PACKAGE_NAME}"
     tar -cvf "${PACKAGE_NAME}" install.sh update.sh uninstall.sh ROOTFILES "${PAYLOAD_NAME}"
     
+    # Cleanup payload after packaging (we don't need it in the repo)
     rm -f "${PAYLOAD_NAME}"
 }
 

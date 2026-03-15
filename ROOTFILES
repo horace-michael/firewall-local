@@ -1,0 +1,9 @@
+# firewall-local manifest
+# Generated: Sun Mar 15 07:32:01 PM EET 2026
+
+etc/sysconfig/firewall.local
+#etc/sysconfig/fw.local/hosts/asn_master.list
+#etc/sysconfig/fw.local/hosts/ip_master.list
+#etc/sysconfig/fw.local/hosts/smb_master.list
+usr/local/bin/firewall_functions
+var/ipfire/backup/addons/includes/firewall-local

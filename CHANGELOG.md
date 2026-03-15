@@ -1,6 +1,22 @@
 # Changelog - Firewall-Local
 
-## [3.3.0] - 2026-03-13
+## [1.3.1] - 2026-03-15
+
+### Added
+- **Build System:** Implemented dynamic directory discovery in `make-package.sh` to automatically include `etc`, `usr`, and `var` from `src/`.
+- **Build System:** Added `shellcheck disable=SC2086` to handle intentional word splitting for `tar` arguments.
+- **Resilience:** Added a fallback mechanism to create a valid payload even if the source directory is empty, preventing build failure.
+
+### Changed
+- **Build Logic:** Refactored `tar` execution to use explicit directory names instead of relative `.` (dot) paths. This ensures compatibility with IPFire's native `extract_backup_includes` function by removing the leading `./` prefix.
+- **Debug Logic:** Redirected environment integrity check messages to `STDERR`.
+- **Logic:** Isolated `STDOUT` for functions returning values (like IP resolution) to prevent "Variable Pollution" when `DEBUG=true` is enabled.
+
+### Fixed
+- **Path Matching:** Resolved "Not found in archive" error during `update.sh` by aligning archive internal structure with Pakfire standards.
+- **SMB Resolution:** Fixed `iptables` execution errors caused by debug strings being captured into IP address variables.
+
+## [1.3.0] - 2026-03-13
 
 ### Added
 - **Build System:** Updated `make-roortfiles.sh` to generate `ROOTFILES`.
@@ -46,7 +62,7 @@ To bypass the kernel lock (`Set cannot be destroyed: it is in use`), the functio
     * Remove the temporary file from `/tmp/`.
     * Log completion event to syslog.
 
-## [3.2.0] - 2026-03-06
+## [1.2.0] - 2026-03-06
 ### Added
 - **IP Master List Architecture**: Introduced `ip_master.list` as the Single Source of Truth for centralizing IP/CIDR-based firewall policies. This also holds the lines for Transparent proxy Bypass
 - **SMB Master List Architecture**: Introduced `smb_master.list` as the Single Source of Truth for centralizing SMB firewall policies.
@@ -82,7 +98,7 @@ To bypass the kernel lock (`Set cannot be destroyed: it is in use`), the functio
 #### ---------------------------------------------------------------------------------------
 
 
-## [3.1.0] - 2026-03-06
+## [1.1.0] - 2026-03-06
 ### Added
 - **Polymorphic IPset Engine**: Implemented `apply_ipset_in_table_chain_action_src_or_dst` to support multi-table (filter/nat) and multi-chain rule injection with dynamic directionality (src/dst).
 - **Atomic IPset Generation**: Added `generate_ipset_from_asn_list` using `ipset restore` and `rename` for zero-downtime kernel updates.
@@ -119,7 +135,7 @@ To bypass the kernel lock (`Set cannot be destroyed: it is in use`), the functio
 
 ---
 
-## [3.0.0] - 2026-03-05
+## [1.0.0] - 2026-03-05
 ### Added
 - Centralized library `/usr/local/bin/firewall_functions` for shared logic management.
 - New `log_event` function providing dual-logging to `/var/log/messages` and terminal.
@@ -133,7 +149,7 @@ To bypass the kernel lock (`Set cannot be destroyed: it is in use`), the functio
 
 ---
 
-## [2.5.2] - 2026-02-09
+## [0.5.2] - 2026-02-09
 ### Description
 - Modular firewall loader designed for IPFire.
 - Execution of `*_start.sh` and `*_stop.sh` scripts from base directory.

@@ -41,19 +41,19 @@ log_event() {
     logger -t "${LOG_TAG}" "[${level}] ${message}"
     
     # Dev Style Output (Active only if DEBUG=true)
-    [ "${DEBUG}" = true ] && printf "[DEBUG] [%s] %s\n" "${level}" "${message}"
+    [ "${DEBUG}" = true ] && printf "[DEBUG] [%s] %s\n" "${level}" "${message}" >&2
 }
 
 validate_env() {
     # Pseudocode: Confirm IPFire identity and directory structure
-    [ "${DEBUG}" = true ] && log_event "DEBUG" "Verifying environment integrity..."
+    [ "${DEBUG}" = true ] && log_event "DEBUG" "Verifying environment integrity..." >&2
     
     # Check both conditions directly to avoid SC2181
     if [ -d "/var/ipfire" ] && grep -q "ipfire" /etc/os-release 2>/dev/null; then
-        log_event "INFO" "IPFire environment detected successfully."
+        [ "${DEBUG}" = true ] && log_event "INFO" "IPFire environment detected successfully." >&2
         return 0
     else
-        log_event "ERROR" "IPFire environment not detected!"
+        log_event "ERROR" "Environment check failed. Not an IPFire system." >&2
         return 1
     fi
 }
@@ -74,7 +74,7 @@ generate_ipset_from_asn_list() {
 
     # 1. Fetch data and modify the set name in the dump file to use temp_name
     # 'location' outputs 'create AS<num>v4' - we sed it to temp_name
-    location list-networks-by-as --format=ipset --family=ipv4 "${asn}" | \
+    location list-networks-by-as --format=ipset --family=ipv4 "${asn}" 2>/dev/null | \
         sed "s/AS${asn}v4/${temp_name}/g" > "${ipset_file}"
     
     # 2. Restore the temporary set into memory
@@ -221,7 +221,7 @@ process_asn_master_list() {
         # STEP: IPset Provisioning Logic
         if ! ipset list "${set_name}" >/dev/null 2>&1; then
             if [ "${mode}" == "apply" ]; then
-                [ "${DEBUG}" = "true" ] && printf "[DEBUG] [ASN] Provisioning %s...\n" "${set_name}"
+                [ "${DEBUG}" = "true" ] && printf "[DEBUG] [ASN] Provisioning %s...\n" "${set_name}" >&2
                 location list-networks-by-as --format=ipset --family=ipv4 "${asn}" > "/etc/ipset/${set_name}.ipset"
                 if [ -s "/etc/ipset/${set_name}.ipset" ]; then
                     ipset restore < "/etc/ipset/${set_name}.ipset"
@@ -270,51 +270,6 @@ process_asn_master_list() {
             [ "${DEBUG}" = "true" ] && printf "[DEBUG] [ASN] %s %s (Log: %s) in %s\n" "${asn}" "${mode}" "${log_val}" "${target_chain}"
         done
     done < "${list_path}"
-}
-
-old_process_ip_line() {
-    # Initialize variables - Priority 1
-    local obj="${1}" table="${2}" action="${3}" dir="${4}" proto="${5}" ports="${6}" chains="${7}" mode="${8:-apply}"
-    local dir_flag port_type ipt_op
-    #local ports_cmd proto_cmd
-    local -a ipt_args
-
-    # FIX SC2015 & SC2086: Explicit Logic
-    if [ "${dir}" == "src" ]; then
-        dir_flag="-s"
-        port_type="--sports"
-    else
-        dir_flag="-d"
-        port_type="--dports"
-    fi
-    
-    # Operation Mode
-    if [ "${mode}" == "remove" ]; then
-        ipt_op="-D"
-    else
-        ipt_op="-I"
-    fi
-
-    # Build Arguments Array (Best practice to avoid SC2086)
-    ipt_args=("${dir_flag}" "${obj}")
-
-    if [ "${proto}" != "all" ] && [ "${ports}" != "all" ]; then
-        ipt_args+=("-p" "${proto}" "-m" "multiport" "${port_type}" "${ports}")
-    fi
-
-    for chain in ${chains}; do
-        # Verify chain existence
-        iptables -t "${table}" -L "${chain}" >/dev/null 2>&1 || continue
-        
-        # Check and Execute using Array expansion (Safe from SC2086)
-        if [ "${mode}" == "remove" ]; then
-            iptables -t "${table}" -C "${chain}" "${ipt_args[@]}" -j "${action}" 2>/dev/null && \
-            iptables --wait -t "${table}" "${ipt_op}" "${chain}" "${ipt_args[@]}" -j "${action}"
-        else
-            iptables -t "${table}" -C "${chain}" "${ipt_args[@]}" -j "${action}" 2>/dev/null || \
-            iptables --wait -t "${table}" "${ipt_op}" "${chain}" "${ipt_args[@]}" -j "${action}"
-        fi
-    done
 }
 
 process_ip_line() {
@@ -386,7 +341,7 @@ process_ip_master_list() {
         return 1
     fi
 
-    [ "${DEBUG}" = "true" ] && printf "[DEBUG] [IP_MASTER] Mode: %s Path: %s\n" "${mode}" "${list_path}"
+    [ "${DEBUG}" = "true" ] && printf "[DEBUG] [IP_MASTER] Mode: %s Path: %s\n" "${mode}" "${list_path}" >&2
 
     # Process CSV using comma as internal field separator
     while IFS=',' read -r obj table action dir proto ports chains || [ -n "${obj}" ]; do
@@ -416,44 +371,6 @@ process_ip_master_list() {
             process_ip_line "${obj}" "${table}" "${action}" "${dir}" "${proto}" "${ports}" "${chains}" "${mode}"
         fi
     done < "${list_path}"
-}
-
-space_process_ip_master_list() {
-    local list_path="${2:-/etc/sysconfig/fw.local/hosts/ip_master.list}"
-    local mode="${1:-apply}" # Initialize variables first
-    local obj table action dir proto ports chains clean_line clean_ip
-
-    [ -f "$list_path" ] || return 1
-
-    while read -r raw_line || [ -n "$raw_line" ]; do
-        # 1. Strip CR and leading/trailing whitespace
-        clean_line=$(echo "${raw_line}" | tr -d '\r' | xargs)
-        [[ "$clean_line" =~ ^#.*$ || -z "$clean_line" ]] && continue
-        
-        # 2. Parse from cleaned line to avoid " tcp" errors
-        read -r obj table action dir proto ports chains <<< "$clean_line"
-        
-        # 3. Clean each variable
-        obj=$(echo "$obj" | xargs)
-        table=$(echo "$table" | xargs)
-        action=$(echo "$action" | xargs)
-        dir=$(echo "$dir" | xargs)
-        proto=$(echo "$proto" | xargs)
-        ports=$(echo "$ports" | xargs)
-        chains=$(echo "$chains" | xargs)
-
-        [ "${DEBUG}" = "true" ] && printf "[DEBUG] [IP_LINE] Obj: %s Proto: %s\n" "$obj" "$proto"
-
-        if [ -f "/etc/sysconfig/fw.local/hosts/${obj}.hosts" ]; then
-            # Logic for .hosts files...
-            while read -r line || [ -n "$line" ]; do
-                clean_ip=$(echo "$line" | sed 's/#.*//' | xargs)
-                [ -n "$clean_ip" ] && process_ip_line "$clean_ip" "$table" "$action" "$dir" "$proto" "$ports" "$chains"
-            done < "/etc/sysconfig/fw.local/hosts/${obj}.hosts"
-        else
-            process_ip_line "$obj" "$table" "$action" "$dir" "$proto" "$ports" "$chains"
-        fi
-    done < "$list_path"
 }
 
 resolve_smb_source_ip() {
@@ -522,7 +439,7 @@ process_smb_master_list() {
     # Set command type based on mode
     [ "${mode}" == "apply" ] && ipt_cmd="-I" || ipt_cmd="-D"
 
-    [ "${DEBUG}" = "true" ] && printf "[DEBUG] [SMB_MASTER] Mode: %s Path: %s\n" "${mode}" "${list_path}"
+    [ "${DEBUG}" = "true" ] && printf "[DEBUG] [SMB_MASTER] Mode: %s Path: %s\n" "${mode}" "${list_path}" >&2
 
     # Process CSV using comma as internal field separator
     while IFS=',' read -r host_fragment action target_ip || [ -n "${host_fragment}" ]; do
@@ -536,7 +453,7 @@ process_smb_master_list() {
         action=$(echo "${action}" | xargs)
         target_ip=$(echo "${target_ip}" | xargs)
 
-        [ "${DEBUG}" = "true" ] && printf "[DEBUG] [SMB_LINE] Frag: %s Act: %s IP: %s\n" "${host_fragment}" "${action}" "${target_ip}"
+        [ "${DEBUG}" = "true" ] && printf "[DEBUG] [SMB_LINE] Frag: %s Act: %s IP: %s\n" "${host_fragment}" "${action}" "${target_ip}" >&2
 
         # Resolve host fragment to current active IP
         if src_ip=$(resolve_smb_source_ip "${host_fragment}"); then
@@ -559,65 +476,3 @@ process_smb_master_list() {
         fi
     done < "${list_path}"
 }
-
-space_process_smb_master_list() {
-    # Pseudocode: Iterates through the SMB master list and applies iptables rules.
-    # 1. Validate file existence.
-    # 2. Loop through lines, resolving the source fragment to a real IP.
-    # 3. Apply multiport rules for SMB ports (135,137,138,139,445,1025).
-
-    # 1. Initialize variables first
-    local list_path="${2:-/etc/sysconfig/fw.local/hosts/smb_master.list}"
-    local mode="${1:-apply}"
-    local host_fragment="" action="" target_ip="" src_ip=""
-    local smb_ports="135,137,138,139,445,1025"
-    local ipt_cmd=""
-    local clean_line=""
-
-    # 1. Verify environment
-    if ! validate_env; then
-        log_event "ERROR" "Environment check failed."
-        return 1
-    fi
-
-    # 2. Check file
-    if [ ! -s "${list_path}" ]; then
-        log_event "ERROR" "SMB list file missing/empty: ${list_path}"
-        return 1
-    fi
-
-    # Set command type based on mode
-    [ "${mode}" == "apply" ] && ipt_cmd="-I" || ipt_cmd="-D" 
-
-    # Debug: Identify which list is being processed
-    [ "${DEBUG}" = "true" ] && printf "[DEBUG] [SMB_MASTER] Mode: %s Path: %s\n" "${mode}" "${list_path}"
-
-    while read -r raw_line || [ -n "${raw_line}" ]; do
-        # Strip CR and leading/trailing whitespace to fix " tcp" error
-        clean_line=$(echo "${raw_line}" | tr -d '\r' | xargs)
-        
-        # Skip comments and empty lines
-        [[ "${clean_line}" =~ ^#.*$ || -z "${clean_line}" ]] && continue
-
-        # Parse from cleaned line
-        read -r host_fragment action target_ip <<< "${clean_line}"
-        
-        # Sanitize individual variables (Jack Reacher Rule: Assumption kills)
-        host_fragment=$(echo "${host_fragment}" | xargs)
-        action=$(echo "${action}" | xargs)
-        target_ip=$(echo "${target_ip}" | xargs)
-
-        [ "${DEBUG}" = "true" ] && printf "[DEBUG] [SMB_LINE] Frag: %s Act: %s IP: %s\n" "${host_fragment}" "${action}" "${target_ip}"
-
-        if src_ip=$(resolve_smb_source_ip "${host_fragment}"); then
-            log_event "INFO" "SMB ${action}: ${host_fragment}(${src_ip}) -> ${target_ip}"
-            
-            # Use sanitized variables to avoid " tcp" protocol error
-            iptables --wait -t filter "${ipt_cmd}" CUSTOMFORWARD -s "${src_ip}" -d "${target_ip}" \
-                -p tcp -m multiport --dports "${smb_ports}" -j "${action}" 2>/dev/null || true 
-        else
-            log_event "WARNING" "SMB: Could not resolve IP for ${host_fragment}" 
-        fi
-    done < "${list_path}"
-}
-
