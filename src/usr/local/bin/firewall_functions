@@ -206,16 +206,24 @@ process_asn_master_list() {
     [ "${mode}" == "apply" ] && ipt_cmd="-I" || ipt_cmd="-D"
 
     while IFS=',' read -r asn table action dir log_val chains || [ -n "${asn}" ]; do
-        # Cleanup and validation of the primary key
+        # Cleanup and validation of the primary key (i.e. ASN)  - just in case file was edited on Windows or with a tool that adds carriage returns
         asn=$(echo "${asn}" | tr -d '\r' | xargs)
         [[ "${asn}" =~ ^#.*$ || -z "${asn}" ]] && continue
 
-        # Normalize remaining CSV fields
+        # ASN should be numeric - if not, skip with a warning
+        if ! [[ "${asn}" =~ ^[0-9]+$ ]]; then
+            log_event "WARNING" "Invalid ASN format: ${asn}. Skipping."
+            continue
+        fi
+
+        # Normalize remaining CSV fields related to iptables rule management
         table=$(echo "${table}" | xargs)
         action=$(echo "${action}" | xargs)
         dir=$(echo "${dir}" | xargs)
         log_val=$(echo "${log_val}" | xargs)
         chains=$(echo "${chains}" | xargs)
+
+        # Build the expected set name for this ASN as expected by IPFire location tool and ipset
         set_name="AS${asn}v4"
 
         # STEP: IPset Provisioning Logic
@@ -256,7 +264,7 @@ process_asn_master_list() {
 
             # 2. Manage the LOG rule if log_val=true
             if [ "${log_val}" == "true" ]; then
-                local log_prefix="ASN:${asn}:${action:0:3} "
+                local log_prefix="ASN:${asn}:${action:0:6} "
                 if [ "${mode}" == "remove" ]; then
                     iptables -t "${table}" -C "${target_chain}" -m set --match-set "${set_name}" "${dir}" -j LOG --log-prefix "${log_prefix}" 2>/dev/null && \
                     iptables --wait -t "${table}" -D "${target_chain}" -m set --match-set "${set_name}" "${dir}" -j LOG --log-prefix "${log_prefix}"
