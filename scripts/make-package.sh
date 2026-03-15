@@ -1,7 +1,7 @@
 #!/bin/bash
 #################################################################################
 # make-package.sh - Firewall-Local Build Utility                                #
-# VERSION="1.0.1 2026-03-15"                                                    #
+# VERSION="1.0.2 2026-03-15"                                                    #
 #                                                                               #
 # MIT License                                                                   #
 #                                                                               #
@@ -88,11 +88,30 @@ sanitize_build_perms() {
 
 build_package() {
     # Pseudocode: Create tar.xz from src and wrap into .ipfire with control scripts
+    # Extracting backup includes...
+    # tar: var/ipfire/backup/addons/includes: Not found in archive
+    # tar: Exiting with failure status due to previous errors
+    local discovered_dirs
+    
     cd "${REPO_ROOT}" || exit 1
 
     [ "${DEBUG}" = true ] && printf "[DEBUG] Creating payload: %s\n" "${PAYLOAD_NAME}"
-    # Use --transform to strip 'src/' prefix during tar creation
-    tar -cJf "${PAYLOAD_NAME}" -C "${SRC_DIR}" .
+
+    # Get only top-level directory names from SRC_DIR (excludes hidden files and the . itself)
+    discovered_dirs=$(find "${SRC_DIR}" -maxdepth 1 -mindepth 1 -type d -exec basename {} \;)
+
+    # Check if we have any directories to archive
+    if [ -z "${discovered_dirs}" ]; then
+        [ "${DEBUG}" = true ] && printf "[ERROR] No directories found in %s to archive\n" "${SRC_DIR}"
+        return 1
+    else
+        # FIX: Archive directories directly (etc usr var) instead of using '.'
+        # This ensures paths in the archive start with 'var/' not './var/'
+        # FIX: We NEED word splitting here so tar gets separate arguments.
+        # We use the directive below to tell the IDE/ShellCheck to shut up.
+        # shellcheck disable=SC2086
+        tar -cJf "${PAYLOAD_NAME}" -C "${SRC_DIR}" ${discovered_dirs}
+    fi
 
     [ "${DEBUG}" = true ] && printf "[DEBUG] Final assembly: %s\n" "${PACKAGE_NAME}"
     tar -cvf "${PACKAGE_NAME}" install.sh update.sh uninstall.sh ROOTFILES "${PAYLOAD_NAME}"
