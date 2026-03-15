@@ -1,7 +1,7 @@
 #!/bin/bash
 #################################################################################
 # make-package.sh - Firewall-Local Build Utility                                #
-# VERSION="1.0.0 2026-03-13"                                                    #
+# VERSION="1.0.1 2026-03-15"                                                    #
 #                                                                               #
 # MIT License                                                                   #
 #                                                                               #
@@ -29,7 +29,7 @@
 # 1. Initialize variables (Base 0)
 DEBUG="${DEBUG:-false}"
 NAME="firewall-local"
-VERSION="1.0.0"
+VERSION="1.0.1"
 AUTHOR="H&M"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SRC_DIR="${REPO_ROOT}/src"

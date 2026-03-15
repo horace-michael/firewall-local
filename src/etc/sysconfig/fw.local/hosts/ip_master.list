@@ -1,6 +1,6 @@
 #################################################################################
 # PATH: /etc/sysconfig/fw.local/hosts/ip_master.list                            #
-# VERSION="1.0.0 2026-03-13" (Agnostic IP/Port)                                 #
+# VERSION="1.0.1 2026-03-15" (Agnostic IP/Port)                                 #
 #                                                                               #
 # MIT License                                                                   #
 #                                                                               #
@@ -35,5 +35,5 @@
 # 7. CHAINS: Space-separated list of chains
 
 # ---------------------------------------------------------------------------------------
-# OBJECT, TABLE, ACTION, DIR, PROTO, PORT, CHAINS
+# OBJECT,TABLE,ACTION,DIR,PROTO,PORT,CHAINS
 # ---------------------------------------------------------------------------------------

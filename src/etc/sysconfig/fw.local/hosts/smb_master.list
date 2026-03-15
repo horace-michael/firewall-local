@@ -1,6 +1,6 @@
 #################################################################################
 # PATH: /etc/sysconfig/fw.local/hosts/smb_master.list                           #
-# VERSION="1.0.0 2026-03-13" (Agnostic IP/Port)                                 #
+# VERSION="1.0.1 2026-03-15" (Agnostic IP/Port)                                 #
 #                                                                               #
 # MIT License                                                                   #
 #                                                                               #
@@ -30,6 +30,6 @@
 # 2. ACTION: ACCEPT / DROP / REJECT / RETURN
 # 3. IP address where SMB traffic should be allowed by IPFire
 # ---------------------------------------------------------------------------------------
-# Host_Fragment, ACTION, IP_DEST
+# Host_Fragment,ACTION,IP_DEST
 # ---------------------------------------------------------------------------------------
 
