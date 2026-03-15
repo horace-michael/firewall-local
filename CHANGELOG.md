@@ -6,11 +6,18 @@
 - **Build System:** Implemented dynamic directory discovery in `make-package.sh` to automatically include `etc`, `usr`, and `var` from `src/`.
 - **Build System:** Added `shellcheck disable=SC2086` to handle intentional word splitting for `tar` arguments.
 - **Resilience:** Added a fallback mechanism to create a valid payload even if the source directory is empty, preventing build failure.
+- **Input Validation:** Implemented strict numeric Regex validation (`^[0-9]+$`) for ASN processing.
+  - *Result:* Prevents command injection and kernel-level errors by skipping non-numeric or malformed ASN entries with a syslog warning.
 
 ### Changed
 - **Build Logic:** Refactored `tar` execution to use explicit directory names instead of relative `.` (dot) paths. This ensures compatibility with IPFire's native `extract_backup_includes` function by removing the leading `./` prefix.
 - **Debug Logic:** Redirected environment integrity check messages to `STDERR`.
 - **Logic:** Isolated `STDOUT` for functions returning values (like IP resolution) to prevent "Variable Pollution" when `DEBUG=true` is enabled.
+- **Logging Clarity:** Increased log-prefix action slicing from `:0:3` to `:0:6`. 
+  - *Result:* Firewall logs now display full words (e.g., `ASN:123:DROP`) instead of truncated fragments (e.g., `DRO`).
+- **Data Normalization:** Integrated `xargs` and `tr -d '\r'` into the ASN master list parser. 
+  - *Result:* Improved resilience against leading/trailing spaces and Windows-style (CRLF) line endings in configuration files.
+
 
 ### Fixed
 - **Path Matching:** Resolved "Not found in archive" error during `update.sh` by aligning archive internal structure with Pakfire standards.
@@ -127,7 +134,7 @@ To bypass the kernel lock (`Set cannot be destroyed: it is in use`), the functio
 ##### Example: Reject outgoing traffic to specific ASN
 ####  212238      filter  REJECT   dst   true    FORWARDFW
 
-##### Example: Bypass Proxy/GeoIP for Privacy Provider (Friend)
+##### Example: Bypass Proxy/GeoIP for Privacy Provider
 ####  208323      filter  RETURN   dst   false   FORWARDFW CUSTOMFORWARD
 
 ##### Example: Custom Alias for Alibaba CN exceptions
@@ -139,7 +146,7 @@ To bypass the kernel lock (`Set cannot be destroyed: it is in use`), the functio
 ### Added
 - Centralized library `/usr/local/bin/firewall_functions` for shared logic management.
 - New `log_event` function providing dual-logging to `/var/log/messages` and terminal.
-- Automated file presence validation prior to execution (Jack Reacher Rule).
+- Automated file presence validation prior to execution.
 - Migration of 26 firewall modules (e.g., ALIBABA, REVOLUT, ASN2Block) to `src/etc/sysconfig/fw.local/`.
 
 ### Changed
