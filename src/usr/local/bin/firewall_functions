@@ -178,39 +178,50 @@ remove_ipset_from_table_chain_action_src_or_dst() {
 
 process_asn_master_list() {
     # Function: process_asn_master_list
-    # Role: Reads ASN master list and applies/removes iptables rules using ipsets.
-    # Pseudocode: 
-    #   1. Validate environment.
-    #   2. Check for missing ipsets in kernel.
-    #   3. If missing, use 'location' utility to fetch networks and 'ipset restore'.
-    #   4. Apply/Remove iptables rule referencing the ipset.
+    # Role: Reads ASN master list (CSV) and applies/removes iptables rules with optional logging.
+    # Pseudocode:
+    #   1. Validate execution environment and list existence.
+    #   2. Parse 6 CSV fields: ASN, TABLE, ACTION, DIR, LOG, CHAINS.
+    #   3. Provision missing ipsets via 'location' utility if mode is 'apply'.
+    #   4. Iterate through target chains.
+    #   5. Manage LOG rules if log_val is 'true'.
+    #   6. Manage ACTION rules (ACCEPT, DROP, etc.) with existence checks.
+
     local mode="${1:-apply}"
     local list_path="${2:-/etc/sysconfig/fw.local/hosts/asn_master.list}"
-    local asn table action dir log chains set_name ipt_cmd
-    
+    local asn table action dir log_val chains set_name ipt_cmd
+
+    # Guardrail: Environment validation
     if ! validate_env; then
         log_event "ERROR" "Environment check failed."
         return 1
     fi
 
+    # Guardrail: Check for missing or empty list
     if [ ! -s "${list_path}" ]; then
-        log_event "ERROR" "ASN list missing: ${list_path}"
+        log_event "ERROR" "ASN list missing or empty: ${list_path}"
         return 1
     fi
 
     [ "${mode}" == "apply" ] && ipt_cmd="-I" || ipt_cmd="-D"
 
-    while read -r asn table action dir log chains || [ -n "${asn}" ]; do
+    while IFS=',' read -r asn table action dir log_val chains || [ -n "${asn}" ]; do
+        # Cleanup and validation of the primary key
+        asn=$(echo "${asn}" | tr -d '\r' | xargs)
         [[ "${asn}" =~ ^#.*$ || -z "${asn}" ]] && continue
-        
-        # Normalize variables
-        asn=$(echo "${asn}" | xargs)
+
+        # Normalize remaining CSV fields
+        table=$(echo "${table}" | xargs)
+        action=$(echo "${action}" | xargs)
+        dir=$(echo "${dir}" | xargs)
+        log_val=$(echo "${log_val}" | xargs)
+        chains=$(echo "${chains}" | xargs)
         set_name="AS${asn}v4"
-        
-        # STEP: Provisioning Logic (The missing part from legacy scripts)
+
+        # STEP: IPset Provisioning Logic
         if ! ipset list "${set_name}" >/dev/null 2>&1; then
             if [ "${mode}" == "apply" ]; then
-                [ "${DEBUG}" = "true" ] && printf "[DEBUG] Provisioning %s...\n" "${set_name}"
+                [ "${DEBUG}" = "true" ] && printf "[DEBUG] [ASN] Provisioning %s...\n" "${set_name}"
                 location list-networks-by-as --format=ipset --family=ipv4 "${asn}" > "/etc/ipset/${set_name}.ipset"
                 if [ -s "/etc/ipset/${set_name}.ipset" ]; then
                     ipset restore < "/etc/ipset/${set_name}.ipset"
@@ -220,59 +231,196 @@ process_asn_master_list() {
                     continue
                 fi
             else
-                [ "${DEBUG}" = "true" ] && printf "[DEBUG] Skip provision for removal: %s\n" "${set_name}"
                 continue
             fi
         fi
 
-        # STEP: Apply Rules
-        IFS=',' read -r -a chain_array <<< "$(echo "${chains}" | tr ' ' ',')"
-        for target_chain in "${chain_array[@]}"; do
+        # STEP: Rule Management Loop
+        for target_chain in ${chains}; do
             [ -z "${target_chain}" ] && continue
-            
-            local match_dir="src"
-            [ "${dir}" == "dst" ] && match_dir="dst"
 
-            # Execute iptables command
-            iptables --wait -t "${table}" "${ipt_cmd}" "${target_chain}" \
-                -m set --match-set "${set_name}" "${match_dir}" \
-                -j "${action}"
-            
-            [ "${DEBUG}" = "true" ] && printf "[DEBUG] ASN %s %s to %s\n" "${asn}" "${mode}" "${target_chain}"
+            # Guardrail: Verify chain existence
+            if ! iptables -t "${table}" -L "${target_chain}" >/dev/null 2>&1; then
+                log_event "WARNING" "Target chain ${target_chain} not found in table ${table}."
+                continue
+            fi
+
+            # 1. Manage the primary ACTION rule
+            if [ "${mode}" == "remove" ]; then
+                iptables -t "${table}" -C "${target_chain}" -m set --match-set "${set_name}" "${dir}" -j "${action}" 2>/dev/null && \
+                iptables --wait -t "${table}" -D "${target_chain}" -m set --match-set "${set_name}" "${dir}" -j "${action}"
+            else
+                iptables -t "${table}" -C "${target_chain}" -m set --match-set "${set_name}" "${dir}" -j "${action}" 2>/dev/null || \
+                iptables --wait -t "${table}" -I "${target_chain}" -m set --match-set "${set_name}" "${dir}" -j "${action}"
+            fi
+
+            # 2. Manage the LOG rule if log_val=true
+            if [ "${log_val}" == "true" ]; then
+                local log_prefix="ASN:${asn}:${action:0:3} "
+                if [ "${mode}" == "remove" ]; then
+                    iptables -t "${table}" -C "${target_chain}" -m set --match-set "${set_name}" "${dir}" -j LOG --log-prefix "${log_prefix}" 2>/dev/null && \
+                    iptables --wait -t "${table}" -D "${target_chain}" -m set --match-set "${set_name}" "${dir}" -j LOG --log-prefix "${log_prefix}"
+                else
+                    # Insert LOG rule at the top (above the action rule)
+                    iptables -t "${table}" -C "${target_chain}" -m set --match-set "${set_name}" "${dir}" -j LOG --log-prefix "${log_prefix}" 2>/dev/null || \
+                    iptables --wait -t "${table}" -I "${target_chain}" -m set --match-set "${set_name}" "${dir}" -j LOG --log-prefix "${log_prefix}" --log-level 4
+                fi
+            fi
+
+            [ "${DEBUG}" = "true" ] && printf "[DEBUG] [ASN] %s %s (Log: %s) in %s\n" "${asn}" "${mode}" "${log_val}" "${target_chain}"
         done
     done < "${list_path}"
 }
 
-process_ip_line() {
-    # Function to process agnostic IP/CIDR rules
-    local obj="${1}" table="${2}" action="${3}" dir="${4}" proto="${5}" ports="${6}" chains="${7}"
-    local dir_flag ports_cmd proto_cmd
-    
-    # Set Direction Flag
-    [ "${dir}" == "src" ] && dir_flag="-s" || dir_flag="-d"
-    
-    # Set Protocol and Ports logic
-    if [ "${proto}" == "all" ] || [ "${ports}" == "all" ]; then
-        proto_cmd=""
-        ports_cmd=""
+old_process_ip_line() {
+    # Initialize variables - Priority 1
+    local obj="${1}" table="${2}" action="${3}" dir="${4}" proto="${5}" ports="${6}" chains="${7}" mode="${8:-apply}"
+    local dir_flag port_type ipt_op
+    #local ports_cmd proto_cmd
+    local -a ipt_args
+
+    # FIX SC2015 & SC2086: Explicit Logic
+    if [ "${dir}" == "src" ]; then
+        dir_flag="-s"
+        port_type="--sports"
     else
-        proto_cmd="-p ${proto}"
-        ports_cmd="-m multiport --dports ${ports}"
+        dir_flag="-d"
+        port_type="--dports"
+    fi
+    
+    # Operation Mode
+    if [ "${mode}" == "remove" ]; then
+        ipt_op="-D"
+    else
+        ipt_op="-I"
+    fi
+
+    # Build Arguments Array (Best practice to avoid SC2086)
+    ipt_args=("${dir_flag}" "${obj}")
+
+    if [ "${proto}" != "all" ] && [ "${ports}" != "all" ]; then
+        ipt_args+=("-p" "${proto}" "-m" "multiport" "${port_type}" "${ports}")
     fi
 
     for chain in ${chains}; do
-        # Verify chain existence before applying
-        if iptables -t "${table}" -L "${chain}" >/dev/null 2>&1; then
-            # Check for existing rule to avoid duplicates (Jack Reacher: Avoid Redundancy)
-            iptables -t "${table}" -C "${chain}" ${dir_flag} "${obj}" "${proto_cmd}" "${ports_cmd}" -j "${action}" 2>/dev/null || \
-            iptables --wait -t "${table}" -I "${chain}" ${dir_flag} "${obj}" "${proto_cmd}" "${ports_cmd}" -j "${action}"
+        # Verify chain existence
+        iptables -t "${table}" -L "${chain}" >/dev/null 2>&1 || continue
+        
+        # Check and Execute using Array expansion (Safe from SC2086)
+        if [ "${mode}" == "remove" ]; then
+            iptables -t "${table}" -C "${chain}" "${ipt_args[@]}" -j "${action}" 2>/dev/null && \
+            iptables --wait -t "${table}" "${ipt_op}" "${chain}" "${ipt_args[@]}" -j "${action}"
+        else
+            iptables -t "${table}" -C "${chain}" "${ipt_args[@]}" -j "${action}" 2>/dev/null || \
+            iptables --wait -t "${table}" "${ipt_op}" "${chain}" "${ipt_args[@]}" -j "${action}"
+        fi
+    done
+}
+
+process_ip_line() {
+    # Function: process_ip_line
+    # Role: Processes IP rules using arrays to handle ports/protocols safely.
+    # Pseudocode:
+    #   1. Set direction flags and operation mode.
+    #   2. Construct ipt_args array; conditionally append protocol and multiport modules.
+    #   3. Loop chains and apply/remove rules using idempotency checks.
+
+    local obj="${1}" table="${2}" action="${3}" dir="${4}" proto="${5}" ports="${6}" chains="${7}" mode="${8:-apply}"
+    local dir_flag port_type ipt_op
+    local -a ipt_args
+
+    # Set Directional Flags
+    if [ "${dir}" == "src" ]; then
+        dir_flag="-s"; port_type="--sports"
+    else
+        dir_flag="-d"; port_type="--dports"
+    fi
+    
+    [ "${mode}" == "remove" ] && ipt_op="-D" || ipt_op="-I"
+
+    # Base Arguments
+    ipt_args=("${dir_flag}" "${obj}")
+
+    # Protocol & Port Logic
+    if [ "${proto}" != "all" ]; then
+        ipt_args+=("-p" "${proto}") # Added protocol to array to fix missing match logic
+        if [ "${ports}" != "all" ]; then
+            ipt_args+=("-m" "multiport" "${port_type}" "${ports}") # Added multiport and port type for granular control
+        fi
+    fi
+
+    for chain in ${chains}; do
+        iptables -t "${table}" -L "${chain}" >/dev/null 2>&1 || continue
+        
+        if [ "${mode}" == "remove" ]; then
+            iptables -t "${table}" -C "${chain}" "${ipt_args[@]}" -j "${action}" 2>/dev/null && \
+            iptables --wait -t "${table}" "${ipt_op}" "${chain}" "${ipt_args[@]}" -j "${action}"
+        else
+            iptables -t "${table}" -C "${chain}" "${ipt_args[@]}" -j "${action}" 2>/dev/null || \
+            iptables --wait -t "${table}" "${ipt_op}" "${chain}" "${ipt_args[@]}" -j "${action}"
         fi
     done
 }
 
 process_ip_master_list() {
-    local list_path="${1:-/etc/sysconfig/fw.local/hosts/ip_master.list}"
-    local mode="${2:-apply}" # Initialize variables first
+    # Function: process_ip_master_list
+    # Role: Reads IP master list (CSV) and processes individual objects or .hosts expansion files.
+    # Pseudocode:
+    #   1. Validate execution environment and list file presence.
+    #   2. Use IFS=',' to parse 7 fields: OBJECT, TABLE, ACTION, DIR, PROTO, PORT, CHAINS.
+    #   3. Determine if OBJECT refers to a .hosts file or a direct network identifier.
+    #   4. Pass sanitized parameters to process_ip_line for iptables execution.
+
+    local mode="${1:-apply}"
+    local list_path="${2:-/etc/sysconfig/fw.local/hosts/ip_master.list}"
+    local obj table action dir proto ports chains host_file clean_ip
+
+    # Guardrail: Environment and file validation
+    if ! validate_env; then
+        log_event "ERROR" "Environment check failed."
+        return 1
+    fi
+
+    if [ ! -s "${list_path}" ]; then
+        log_event "ERROR" "IP master list missing or empty: ${list_path}"
+        return 1
+    fi
+
+    [ "${DEBUG}" = "true" ] && printf "[DEBUG] [IP_MASTER] Mode: %s Path: %s\n" "${mode}" "${list_path}"
+
+    # Process CSV using comma as internal field separator
+    while IFS=',' read -r obj table action dir proto ports chains || [ -n "${obj}" ]; do
+        # Clean carriage returns and trim whitespace
+        obj=$(echo "${obj}" | tr -d '\r' | xargs)
+        
+        # Guardrail: Skip comments and empty lines
+        [[ "${obj}" =~ ^#.*$ || -z "${obj}" ]] && continue
+
+        # Normalize remaining CSV fields
+        table=$(echo "${table}" | xargs)
+        action=$(echo "${action}" | xargs)
+        dir=$(echo "${dir}" | xargs)
+        proto=$(echo "${proto}" | xargs)
+        ports=$(echo "${ports}" | xargs)
+        chains=$(echo "${chains}" | xargs)
+
+        host_file="/etc/sysconfig/fw.local/hosts/${obj}.hosts"
+
+        if [ -f "${host_file}" ]; then
+            [ "${DEBUG}" = "true" ] && printf "[DEBUG] [IP_MASTER] Expanding host file: %s\n" "${obj}.hosts"
+            while read -r line || [ -n "${line}" ]; do
+                clean_ip=$(echo "${line}" | sed 's/#.*//' | xargs)
+                [ -n "${clean_ip}" ] && process_ip_line "${clean_ip}" "${table}" "${action}" "${dir}" "${proto}" "${ports}" "${chains}" "${mode}"
+            done < "${host_file}"
+        else
+            process_ip_line "${obj}" "${table}" "${action}" "${dir}" "${proto}" "${ports}" "${chains}" "${mode}"
+        fi
+    done < "${list_path}"
+}
+
+space_process_ip_master_list() {
+    local list_path="${2:-/etc/sysconfig/fw.local/hosts/ip_master.list}"
+    local mode="${1:-apply}" # Initialize variables first
     local obj table action dir proto ports chains clean_line clean_ip
 
     [ -f "$list_path" ] || return 1
@@ -285,9 +433,15 @@ process_ip_master_list() {
         # 2. Parse from cleaned line to avoid " tcp" errors
         read -r obj table action dir proto ports chains <<< "$clean_line"
         
-        # 3. Clean each variable (Jack Reacher Rule)
+        # 3. Clean each variable
+        obj=$(echo "$obj" | xargs)
+        table=$(echo "$table" | xargs)
+        action=$(echo "$action" | xargs)
+        dir=$(echo "$dir" | xargs)
         proto=$(echo "$proto" | xargs)
-        
+        ports=$(echo "$ports" | xargs)
+        chains=$(echo "$chains" | xargs)
+
         [ "${DEBUG}" = "true" ] && printf "[DEBUG] [IP_LINE] Obj: %s Proto: %s\n" "$obj" "$proto"
 
         if [ -f "/etc/sysconfig/fw.local/hosts/${obj}.hosts" ]; then
@@ -339,6 +493,74 @@ resolve_smb_source_ip() {
 }
 
 process_smb_master_list() {
+    # Function: process_smb_master_list
+    # Role: Iterates through the SMB master list (CSV) and applies/removes iptables rules.
+    # Pseudocode:
+    #   1. Validate execution environment and file presence.
+    #   2. Use IFS=',' to parse CSV fields: Host_Fragment, ACTION, IP_DEST.
+    #   3. Resolve host fragment to a real source IP.
+    #   4. Apply/Remove multiport rules for SMB ports (135,137,138,139,445,1025) in CUSTOMFORWARD.
+
+    local mode="${1:-apply}"
+    local list_path="${2:-/etc/sysconfig/fw.local/hosts/smb_master.list}"
+    local host_fragment="" action="" target_ip="" src_ip=""
+    local smb_ports="135,137,138,139,445,1025"
+    local ipt_cmd=""
+
+    # Guardrail: Environment validation
+    if ! validate_env; then
+        log_event "ERROR" "Environment check failed."
+        return 1
+    fi
+
+    # Guardrail: Check for missing or empty list
+    if [ ! -s "${list_path}" ]; then
+        log_event "ERROR" "SMB list file missing or empty: ${list_path}"
+        return 1
+    fi
+
+    # Set command type based on mode
+    [ "${mode}" == "apply" ] && ipt_cmd="-I" || ipt_cmd="-D"
+
+    [ "${DEBUG}" = "true" ] && printf "[DEBUG] [SMB_MASTER] Mode: %s Path: %s\n" "${mode}" "${list_path}"
+
+    # Process CSV using comma as internal field separator
+    while IFS=',' read -r host_fragment action target_ip || [ -n "${host_fragment}" ]; do
+        # Clean carriage returns and leading/trailing whitespace
+        host_fragment=$(echo "${host_fragment}" | tr -d '\r' | xargs)
+        
+        # Guardrail: Skip comments and empty lines
+        [[ "${host_fragment}" =~ ^#.*$ || -z "${host_fragment}" ]] && continue
+
+        # Sanitize individual variables
+        action=$(echo "${action}" | xargs)
+        target_ip=$(echo "${target_ip}" | xargs)
+
+        [ "${DEBUG}" = "true" ] && printf "[DEBUG] [SMB_LINE] Frag: %s Act: %s IP: %s\n" "${host_fragment}" "${action}" "${target_ip}"
+
+        # Resolve host fragment to current active IP
+        if src_ip=$(resolve_smb_source_ip "${host_fragment}"); then
+            log_event "INFO" "SMB ${action}: ${host_fragment}(${src_ip}) -> ${target_ip}"
+            
+            # Idempotency: Check rule existence before adding or removing
+            if [ "${mode}" == "remove" ]; then
+                iptables -t filter -C CUSTOMFORWARD -s "${src_ip}" -d "${target_ip}" \
+                    -p tcp -m multiport --dports "${smb_ports}" -j "${action}" 2>/dev/null && \
+                iptables --wait -t filter "${ipt_cmd}" CUSTOMFORWARD -s "${src_ip}" -d "${target_ip}" \
+                    -p tcp -m multiport --dports "${smb_ports}" -j "${action}"
+            else
+                iptables -t filter -C CUSTOMFORWARD -s "${src_ip}" -d "${target_ip}" \
+                    -p tcp -m multiport --dports "${smb_ports}" -j "${action}" 2>/dev/null || \
+                iptables --wait -t filter "${ipt_cmd}" CUSTOMFORWARD -s "${src_ip}" -d "${target_ip}" \
+                    -p tcp -m multiport --dports "${smb_ports}" -j "${action}"
+            fi
+        else
+            log_event "WARNING" "SMB: Could not resolve IP for host fragment: ${host_fragment}"
+        fi
+    done < "${list_path}"
+}
+
+space_process_smb_master_list() {
     # Pseudocode: Iterates through the SMB master list and applies iptables rules.
     # 1. Validate file existence.
     # 2. Loop through lines, resolving the source fragment to a real IP.
@@ -398,3 +620,4 @@ process_smb_master_list() {
         fi
     done < "${list_path}"
 }
+

@@ -24,7 +24,15 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE #
 # SOFTWARE.                                                                     #
 #################################################################################
-# 
+#
+# FIELDS:
+# 1. ASN:    Autonomous System Number (e.g., 15169 for Google).
+# 2. TABLE:  filter / nat
+# 3. ACTION: ACCEPT / DROP / REJECT / RETURN
+# 4. DIR:    src / dst (Match traffic FROM or TO this ASN)
+# 5. LOG:    true / false (Enable/Disable logging for this rule)
+# 6. CHAINS: Space-separated list of chains (e.g., FORWARDFW CUSTOMFORWARD)
+#
 # ----------------------------------------------------------------------------------
-# ASN           TABLE   ACTION   DIR   LOG     CHAINS
+# ASN,TABLE,ACTION,DIR,LOG,CHAINS
 # ----------------------------------------------------------------------------------

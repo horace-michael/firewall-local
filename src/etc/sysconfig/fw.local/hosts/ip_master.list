@@ -35,5 +35,5 @@
 # 7. CHAINS: Space-separated list of chains
 
 # ---------------------------------------------------------------------------------------
-# OBJECT            TABLE   ACTION  DIR  PROTO  PORT          CHAINS
+# OBJECT, TABLE, ACTION, DIR, PROTO, PORT, CHAINS
 # ---------------------------------------------------------------------------------------

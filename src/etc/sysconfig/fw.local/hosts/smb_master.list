@@ -30,6 +30,6 @@
 # 2. ACTION: ACCEPT / DROP / REJECT / RETURN
 # 3. IP address where SMB traffic should be allowed by IPFire
 # ---------------------------------------------------------------------------------------
-# Host_Fragment    ACTION    IP_DEST
+# Host_Fragment, ACTION, IP_DEST
 # ---------------------------------------------------------------------------------------
 
